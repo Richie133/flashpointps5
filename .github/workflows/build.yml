@@ -1,13 +1,23 @@
-# Builds the app on every push. A tag such as v1.0.0 also publishes a GitHub
-# release with PPSA72386.zip attached (what homebrew stores install).
+# Builds the app on every push. Publishing a release attaches PPSA72386.zip
+# to it (what homebrew stores install):
+#   - Actions > Build > Run workflow with "Publish a release" ticked creates
+#     the release v<contentVersion> from sce_sys/param.json, or
+#   - a release published on GitHub (tag v<contentVersion>) gets the zip,
+#     title and notes added a few minutes later.
 name: Build
 
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a release for the version in sce_sys/param.json
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -27,16 +37,17 @@ jobs:
             sudo ln -sf "/usr/bin/$tool-18" "/usr/local/bin/$tool"
           done
 
-      - name: Check the version
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Work out the release tag
+        id: version
         run: |
           version=$(python3 -c 'import json; print(json.load(open("sce_sys/param.json"))["contentVersion"])')
           IFS=. read -r major minor patch <<< "$version"
-          expected="v$((10#$major)).$((10#$minor)).$((10#$patch))"
-          [[ $GITHUB_REF_NAME == "$expected" ]] || {
-            echo "tag $GITHUB_REF_NAME does not match contentVersion $version ($expected)" >&2
+          tag="v$((10#$major)).$((10#$minor)).$((10#$patch))"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if [[ $GITHUB_EVENT_NAME == release && $GITHUB_REF_NAME != "$tag" ]]; then
+            echo "release $GITHUB_REF_NAME does not match contentVersion $version (expected $tag)" >&2
             exit 1
-          }
+          fi
 
       - name: Build
         run: make USE_CCACHE=0
@@ -47,11 +58,18 @@ jobs:
           path: dist/PPSA72386.zip
 
       - name: Publish the release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish)
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
           sha=$(sha256sum dist/PPSA72386.zip | cut -d ' ' -f 1)
           { cat .github/release-notes.md; printf '\n`PPSA72386.zip` sha256: `%s`\n' "$sha"; } > notes.md
-          gh release create "$GITHUB_REF_NAME" dist/PPSA72386.zip \
-            --title "Flashpoint PS5 ${GITHUB_REF_NAME#v}" --notes-file notes.md
+          title="Flashpoint PS5 ${TAG#v}"
+          if [[ $GITHUB_EVENT_NAME == release ]]; then
+            gh release upload "$TAG" dist/PPSA72386.zip --clobber
+            gh release edit "$TAG" --title "$title" --notes-file notes.md
+          else
+            gh release create "$TAG" dist/PPSA72386.zip --target "$GITHUB_SHA" \
+              --title "$title" --notes-file notes.md
+          fi

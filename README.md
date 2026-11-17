@@ -120,6 +120,11 @@ payload/build/pc/fpps5 --root /path/to/Flashpoint --no-browser &
 make host-snapshots     # PNGs of every screen in build/snapshots
 ```
 
+To release a new version, raise `contentVersion` in `sce_sys/param.json`, push,
+then run the **Build** workflow on GitHub (Actions → Build → Run workflow) with
+**Publish a release** ticked. It builds the app and publishes the release
+`v<version>` with `PPSA72386.zip` attached.
+
 | Folder | What it is |
 |---|---|
 | `src/fp/` | The app: screens (`app.cpp`), service client (`backend.cpp`), image cache |
