@@ -1,9 +1,11 @@
-# Builds the app on every push. Publishing a release attaches PPSA72386.zip
-# to it (what homebrew stores install):
-#   - Actions > Build > Run workflow with "Publish a release" ticked creates
-#     the release v<contentVersion> from sce_sys/param.json, or
-#   - a release published on GitHub (tag v<contentVersion>) gets the zip,
-#     title and notes added a few minutes later.
+# Builds the app on every push, and puts PPSA72386.zip (what homebrew stores
+# install) on releases:
+#   - Publish a release on GitHub with any tag: the zip is attached a few
+#     minutes later, and its sha256 is added under your notes.
+#   - Actions > Build > Run workflow, with "Release tag" filled in: builds that
+#     tag and attaches the zip to its release (e.g. to redo one).
+#   - Run workflow with "Publish a new release" ticked: creates the release
+#     v<contentVersion> from sce_sys/param.json.
 name: Build
 
 on:
@@ -14,8 +16,12 @@ on:
     types: [published]
   workflow_dispatch:
     inputs:
+      tag:
+        description: Release tag to build and attach the app to (leave empty to only build)
+        type: string
+        default: ''
       publish:
-        description: Publish a release for the version in sce_sys/param.json
+        description: Or publish a new release v<contentVersion> from sce_sys/param.json
         type: boolean
         default: false
 
@@ -26,7 +32,9 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Install the toolchain
         run: |
@@ -37,39 +45,60 @@ jobs:
             sudo ln -sf "/usr/bin/$tool-18" "/usr/local/bin/$tool"
           done
 
-      - name: Work out the release tag
-        id: version
+      - name: Decide what to publish
+        id: target
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
         run: |
           version=$(python3 -c 'import json; print(json.load(open("sce_sys/param.json"))["contentVersion"])')
-          IFS=. read -r major minor patch <<< "$version"
-          tag="v$((10#$major)).$((10#$minor)).$((10#$patch))"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          if [[ $GITHUB_EVENT_NAME == release && $GITHUB_REF_NAME != "$tag" ]]; then
-            echo "release $GITHUB_REF_NAME does not match contentVersion $version (expected $tag)" >&2
-            exit 1
+          echo "contentVersion: $version"
+          mode=none
+          tag=
+          if [[ $GITHUB_EVENT_NAME == release ]]; then
+            mode=attach; tag=$GITHUB_REF_NAME
+          elif [[ $GITHUB_EVENT_NAME == workflow_dispatch && -n $INPUT_TAG ]]; then
+            mode=attach; tag=$INPUT_TAG
+          elif [[ $GITHUB_EVENT_NAME == workflow_dispatch && $INPUT_PUBLISH == true ]]; then
+            IFS=. read -r major minor patch <<< "$version"
+            mode=create; tag="v$((10#$major)).$((10#$minor)).$((10#$patch))"
           fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "publish: $mode $tag"
 
       - name: Build
         run: make USE_CCACHE=0
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: PPSA72386
           path: dist/PPSA72386.zip
 
-      - name: Publish the release
-        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish)
+      - name: Publish
+        if: steps.target.outputs.mode != 'none'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
+          MODE: ${{ steps.target.outputs.mode }}
+          TAG: ${{ steps.target.outputs.tag }}
         run: |
           sha=$(sha256sum dist/PPSA72386.zip | cut -d ' ' -f 1)
-          { cat .github/release-notes.md; printf '\n`PPSA72386.zip` sha256: `%s`\n' "$sha"; } > notes.md
-          title="Flashpoint PS5 ${TAG#v}"
-          if [[ $GITHUB_EVENT_NAME == release ]]; then
-            gh release upload "$TAG" dist/PPSA72386.zip --clobber
-            gh release edit "$TAG" --title "$title" --notes-file notes.md
+          line="\`PPSA72386.zip\` sha256: \`$sha\`"
+          if [[ $MODE == attach ]]; then
+            gh release upload "$TAG" dist/PPSA72386.zip --clobber --repo "$GITHUB_REPOSITORY"
+            # keep the release's own title and notes; replace an older digest line
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > body.md
+            python3 - "$line" <<'PY'
+          import sys
+          kept = [l for l in open("body.md").read().splitlines()
+                  if not l.startswith("`PPSA72386.zip` sha256:")]
+          text = "\n".join(kept).rstrip()
+          open("notes.md", "w").write((text + "\n\n" if text else "") + sys.argv[1] + "\n")
+          PY
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
           else
-            gh release create "$TAG" dist/PPSA72386.zip --target "$GITHUB_SHA" \
-              --title "$title" --notes-file notes.md
+            { cat .github/release-notes.md; printf '\n%s\n' "$line"; } > notes.md
+            gh release create "$TAG" dist/PPSA72386.zip --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --title "Flashpoint PS5 ${TAG#v}" --notes-file notes.md
           fi
+          echo "$line"

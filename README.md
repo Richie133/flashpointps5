@@ -120,10 +120,11 @@ payload/build/pc/fpps5 --root /path/to/Flashpoint --no-browser &
 make host-snapshots     # PNGs of every screen in build/snapshots
 ```
 
-To release a new version, raise `contentVersion` in `sce_sys/param.json`, push,
-then run the **Build** workflow on GitHub (Actions → Build → Run workflow) with
-**Publish a release** ticked. It builds the app and publishes the release
-`v<version>` with `PPSA72386.zip` attached.
+To release a new version, raise `contentVersion` in `sce_sys/param.json` (consoles
+use it to spot updates), push, then publish a release on GitHub with any tag. The
+**Build** workflow attaches `PPSA72386.zip` to it a few minutes later and adds the
+zip's sha256 under your notes. To redo a release's zip, run the workflow
+(Actions → Build → Run workflow) with that release's tag.
 
 | Folder | What it is |
 |---|---|
