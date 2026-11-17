@@ -21,7 +21,7 @@ async function main() {
         secondaryText: 'Browse and play Flashpoint Archive games',
         onclick: async () => {
             // Started twice, the payload just reopens the browser.
-            await ApiClient.launchApp(PAYLOAD, null, null, window.workingDir, true);
+            await ApiClient.launchApp(PAYLOAD, '--open-browser', null, window.workingDir, true);
             return true;
         },
         options: [

@@ -40,7 +40,9 @@ static void defaults(void) {
   str_lcpy(g_cfg.flashpoint_path, "/data/flashpoint", sizeof g_cfg.flashpoint_path);
   str_lcpy(g_cfg.run_path, "/data/ruffle/flashpoint", sizeof g_cfg.run_path);
   str_lcpy(g_cfg.log_path, "/data/fpps5/fpps5.log", sizeof g_cfg.log_path);
-  g_cfg.open_browser = 1;
+  /* The Flashpoint PS5 app is the usual front end; websrv's homebrew.js
+   * passes --open-browser to use the PS5 browser instead. */
+  g_cfg.open_browser = 0;
 #else
   str_lcpy(g_cfg.flashpoint_path, "./flashpoint", sizeof g_cfg.flashpoint_path);
   str_lcpy(g_cfg.run_path, "./run", sizeof g_cfg.run_path);

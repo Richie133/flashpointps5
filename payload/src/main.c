@@ -29,13 +29,13 @@ static void usage(const char *argv0) {
   printf("Flashpoint PS5 %s\n"
          "usage: %s [--config fpps5.json] [--root <Flashpoint folder>] [--www <dir>]\n"
          "          [--ui-port N] [--game-port N] [--run <dir>] [--ruffle-dir <dir>]\n"
-         "          [--no-browser]\n",
+         "          [--open-browser | --no-browser]\n",
          FPPS5_VERSION, argv0);
 }
 
 int main(int argc, char **argv) {
   const char *cfg_path = NULL, *root = NULL, *www = NULL, *run = NULL, *ruffle = NULL;
-  int ui_port = 0, game_port = 0, no_browser = 0;
+  int ui_port = 0, game_port = 0, no_browser = 0, open_browser = 0;
   for (int i = 1; i < argc; i++) {
     const char *a = argv[i];
     const char *next = i + 1 < argc ? argv[i + 1] : NULL;
@@ -47,6 +47,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--ui-port") && next) ui_port = atoi(argv[++i]);
     else if (!strcmp(a, "--game-port") && next) game_port = atoi(argv[++i]);
     else if (!strcmp(a, "--no-browser")) no_browser = 1;
+    else if (!strcmp(a, "--open-browser")) open_browser = 1;
     else if (!strcmp(a, "--help") || !strcmp(a, "-h")) {
       usage(argv[0]);
       return 0;
@@ -61,6 +62,7 @@ int main(int argc, char **argv) {
   if (ruffle) str_lcpy(g_cfg.ruffle_dir, ruffle, sizeof g_cfg.ruffle_dir);
   if (ui_port) g_cfg.ui_port = ui_port;
   if (game_port) g_cfg.game_server_port = game_port;
+  if (open_browser) g_cfg.open_browser = 1;
   if (no_browser) g_cfg.open_browser = 0;
   if (g_cfg.log_path[0]) log_set_file(g_cfg.log_path);
 

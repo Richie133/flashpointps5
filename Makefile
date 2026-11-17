@@ -1,69 +1,117 @@
-# Flashpoint PS5 - PS5 payload build (ps5-payload-sdk).
-#   export PS5_PAYLOAD_SDK=/opt/ps5-payload-sdk
-#   make            -> build/ps5/flashpoint-ps5.elf
-#   make homebrew   -> dist/FlashpointPS5/ (copy to /data/homebrew/)
-#   make test       -> send the ELF to elfldr on $(PS5_HOST):$(PS5_PORT)
-# The PC test build is Makefile.pc.
+# Flashpoint PS5 - build entry points (Linux/WSL).
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+#   make                 the app folder dist/PPSA72386 and dist/PPSA72386.zip
+#   make payload         only the background service (payload/build/ps5/flashpoint-ps5.elf)
+#   make host-snapshots  PC pictures of every screen (start payload/build/pc/fpps5 first)
+#
+# Based on ps5-native-app-boilerplate by BlackBearReloaded (GPL-3.0-or-later).
 
-PS5_HOST ?= ps5
-PS5_PORT ?= 9021
+SHELL := /bin/bash
+.DEFAULT_GOAL := app
 
-ifdef PS5_PAYLOAD_SDK
-    include $(PS5_PAYLOAD_SDK)/toolchain/prospero.mk
-else
-    $(error PS5_PAYLOAD_SDK is undefined)
-endif
+-include .env
 
-PYTHON ?= python3
-BUILD  := build/ps5
-ELF    := $(BUILD)/flashpoint-ps5.elf
+APP_DEFINITIONS ?=
+APP_INCLUDE_PATHS ?=
+APP_STATIC_ARCHIVES ?=
+APP_IMPORT_STUBS ?=
+APP_RUNTIME_MODULES ?=
+PS5_OPENGL_PREFIX ?=
 
-APP_SRCS := src/main.c src/util.c src/config.c src/httpd.c src/library.c \
-            src/gamedata.c src/launch.c src/gameserver.c src/api.c \
-            src/net_ps5.c src/platform_ps5.c
-TP_SRCS  := third_party/sqlite/sqlite3.c third_party/miniz/miniz.c \
-            third_party/cjson/cJSON.c third_party/sha256/sha256.c
-GEN_SRC  := $(BUILD)/assets_gen.c
-WWW      := $(shell find www -type f)
+# The app always builds against ps5-opengl; user APP_* values append.
+OPENGL_SDK := .deps/ps5-opengl/current
+override APP_DEFINITIONS := $(strip GL_GLEXT_PROTOTYPES=1 $(APP_DEFINITIONS))
+override APP_INCLUDE_PATHS := $(strip src $(OPENGL_SDK)/include $(APP_INCLUDE_PATHS))
+override APP_STATIC_ARCHIVES := $(strip .deps/ps5-opengl/libps5opengl-group.a $(APP_STATIC_ARCHIVES))
+override APP_IMPORT_STUBS := $(strip $(OPENGL_SDK)/lib/libSceAgc.so \
+	$(OPENGL_SDK)/lib/libSceAgcDriver.so $(APP_IMPORT_STUBS))
+PACBREW_PACKAGES ?=
+PACBREW_INCLUDE_PATHS ?=
+PACBREW_STATIC_ARCHIVES ?=
+BUILD_JOBS ?= $(shell nproc 2>/dev/null || echo 2)
+USE_CCACHE ?= 1
+export BUILD_JOBS USE_CCACHE
+export APP_DEFINITIONS APP_INCLUDE_PATHS APP_STATIC_ARCHIVES APP_IMPORT_STUBS APP_RUNTIME_MODULES
+export PS5_OPENGL_PREFIX
+export PACBREW_PACKAGES PACBREW_INCLUDE_PATHS PACBREW_STATIC_ARCHIVES
 
-CFLAGS   := -O2 -g -Wall -Werror
-TPFLAGS  := -O2 -g -w -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION \
-            -DSQLITE_DEFAULT_MEMSTATUS=0 -DHAVE_USLEEP=1
-LDADD    := -lSceSystemService -lSceUserService -lSceSsl -lSceHttp -lSceNet -lpthread
+PAYLOAD_SDK := $(CURDIR)/.deps/native/ps5-payload-sdk
+PAYLOAD_ELF := payload/build/ps5/flashpoint-ps5.elf
+RUNTIME := runtime/libc.prx
+RUNTIME_INPUTS := tools/rebuild-libc.sh tools/build-host-tools.sh tools/ninja-build.sh \
+	$(wildcard tooling/native/*.cpp tooling/native/*.hpp) \
+	$(wildcard tooling/native/runtime/*.txt)
 
-APP_OBJS := $(APP_SRCS:%.c=$(BUILD)/%.o)
-TP_OBJS  := $(TP_SRCS:%.c=$(BUILD)/%.o)
+.PHONY: all app build payload payload-pc deps doctor libc opengl host-snapshots assets-check clean distclean help
 
-all: $(ELF)
+all: app
+build: app
 
-$(BUILD)/src/%.o: src/%.c $(wildcard src/*.h)
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c -o $@ $<
+doctor:
+	@printf '%s\n' '==> [doctor] Checking the Linux/WSL host without changing it'
+	@bash tools/doctor.sh
 
-$(BUILD)/third_party/%.o: third_party/%.c
-	@mkdir -p $(dir $@)
-	$(CC) $(TPFLAGS) -c -o $@ $<
+deps:
+	@printf '%s\n' '==> [deps] Fetching declared native dependencies'
+	@bash tools/setup-native-dependencies.sh
+	@bash tools/prepare-opengl.sh
 
-$(GEN_SRC): tools/embed.py $(WWW)
-	@mkdir -p $(dir $@)
-	$(PYTHON) tools/embed.py www $@
+opengl:
+	@printf '%s\n' '==> [opengl] Preparing the ps5-opengl SDK link group'
+	@bash tools/prepare-opengl.sh
 
-$(BUILD)/assets_gen.o: $(GEN_SRC)
-	$(CC) -O1 -w -Isrc -c -o $@ $<
+assets-check:
+	@printf '%s\n' '==> [assets] Validating the launcher icon'
+	@bash tools/validate-assets.sh
 
-$(ELF): $(APP_OBJS) $(TP_OBJS) $(BUILD)/assets_gen.o
-	$(CC) -o $@ $^ $(LDADD)
+libc:
+	@printf '%s\n' '==> [libc] Rebuilding and verifying the clean-room runtime'
+	@bash tools/rebuild-libc.sh
 
-homebrew: $(ELF)
-	rm -rf dist/FlashpointPS5
-	mkdir -p dist/FlashpointPS5
-	cp -r homebrew/FlashpointPS5/. dist/FlashpointPS5/
-	cp $(ELF) dist/FlashpointPS5/flashpoint-ps5.elf
+$(RUNTIME): $(RUNTIME_INPUTS)
+	@printf '%s\n' '==> [libc] Generating the missing or outdated runtime'
+	@bash tools/rebuild-libc.sh
 
-test: $(ELF)
-	$(PS5_DEPLOY) -h $(PS5_HOST) -p $(PS5_PORT) $(ELF)
+# The background service the app sends to the ELF loader. It ships inside
+# the app folder as assets/payload/flashpoint-ps5.elf.
+payload:
+	@printf '%s\n' '==> [payload] Building the Flashpoint background service'
+	@bash tools/setup-native-dependencies.sh >/dev/null
+	@$(MAKE) --no-print-directory -C payload PS5_PAYLOAD_SDK=$(PAYLOAD_SDK)
+	@mkdir -p assets/payload
+	@cp $(PAYLOAD_ELF) assets/payload/flashpoint-ps5.elf
+
+# The same service for a PC, for testing the app and the web UI.
+payload-pc:
+	@$(MAKE) --no-print-directory -C payload -f Makefile.pc
+
+app: $(RUNTIME) opengl payload
+	@printf '%s\n' '==> [app] Compiling, linking, signing, and assembling the app folder'
+	@bash tools/build.sh Folder
+
+host-snapshots:
+	@printf '%s\n' '==> [host-snapshots] Running the app on the PC, pictures in build/snapshots'
+	@bash tools/host-snapshots.sh
 
 clean:
-	rm -rf $(BUILD) dist/FlashpointPS5
+	@printf '%s\n' '==> [clean] Removing generated build outputs'
+	@rm -rf -- build dist assets/payload payload/build
+	@rm -f -- $(RUNTIME)
 
-.PHONY: all homebrew test clean
+distclean: clean
+	@printf '%s\n' '==> [distclean] Removing downloaded dependency caches'
+	@rm -rf -- .deps
+
+help:
+	@printf '%s\n' \
+	  'make                 Build dist/PPSA72386 (the app folder) and dist/PPSA72386.zip' \
+	  'make payload         Build only the background service ELF' \
+	  'make payload-pc      Build the service for a PC (payload/build/pc/fpps5)' \
+	  'make host-snapshots  Run the app on the PC and write PNGs to build/snapshots' \
+	  'make deps            Fetch the PS5 payload SDK and ps5-opengl into .deps/' \
+	  'make doctor          Check required and optional Linux/WSL tools' \
+	  'make libc            Force a deterministic runtime/libc.prx rebuild' \
+	  'make clean           Remove build outputs' \
+	  'make distclean       Also remove the .deps/ cache' \
+	  'Build speed:         BUILD_JOBS defaults to all CPUs; USE_CCACHE=0 disables ccache'

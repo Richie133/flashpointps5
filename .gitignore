@@ -1,3 +1,12 @@
+# Flashpoint PS5 - generated and local-only files
+.deps/
+.local/
 build/
 dist/
-*.o
+__pycache__/
+*.pyc
+*.log
+*.prx
+/assets/payload/
+payload/build/
+payload/dist/

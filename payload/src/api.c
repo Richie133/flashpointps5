@@ -54,6 +54,16 @@ static void api_search(http_req_t *req) {
            "X-Total-Count: %lld\r\nAccess-Control-Expose-Headers: X-Total-Count\r\n"
            "Cache-Control: no-store\r\n",
            total);
+  if (http_param_bool(req, "envelope", 0)) {
+    /* {"total":N,"results":[...]} for clients that can't read headers */
+    sb_t sb;
+    sb_init(&sb);
+    sb_printf(&sb, "{\"total\":%lld,\"results\":", total);
+    sb_append(&sb, json);
+    sb_append(&sb, "}");
+    free(json);
+    json = sb_steal(&sb);
+  }
   http_respond(req, 200, "application/json; charset=utf-8", json, strlen(json), extra);
   free(json);
 }
