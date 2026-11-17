@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Play - Flashpoint PS5</title>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="stylesheet" href="/app.css">
+  <style>
+    body { display: flex; flex-direction: column; height: 100vh; }
+    .play-bar { display: flex; align-items: center; gap: 1rem; padding: 0.6rem 1rem; background: var(--frames); border-bottom: 1px solid var(--gridline); }
+    .play-bar h1 { font-size: 1rem; margin: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #stage { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+    #stage ruffle-player, #stage ruffle-object { width: 100%; height: 100%; }
+    #msg { max-width: 36rem; padding: 1.5rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="play-bar">
+    <a class="btn small" href="javascript:history.back()">Back</a>
+    <h1 id="title">Flashpoint PS5</h1>
+    <span class="status" id="state"></span>
+  </div>
+  <div id="stage"><p id="msg">Getting the game ready…</p></div>
+  <script>
+  /* Plays a Flash entry from the PS5's library in this browser with Ruffle
+   * (WebAssembly), for phones and PCs on the same network. Files come from
+   * the PS5's game server; absolute URLs inside the game are rewritten to
+   * it, so games that load from their original site still find their files. */
+  'use strict';
+  const msg = (t) => { document.getElementById('msg').textContent = t; };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.append(s);
+    });
+  }
+
+  (async () => {
+    const id = new URLSearchParams(location.search).get('id');
+    if (typeof WebAssembly !== 'object') {
+      msg('This browser can’t run Ruffle (it has no WebAssembly). The PS5 browser is like that: use Play on the PS5 instead.');
+      return;
+    }
+    for (;;) {
+      const r = await (await fetch(`/api/prepare?id=${encodeURIComponent(id)}`)).json();
+      if (r.status === 'ready') break;
+      if (r.status !== 'pending') { msg(r.message || 'This entry can’t be prepared.'); return; }
+      const j = (r.jobs || []).find((x) => x.gameId === id);
+      msg(j && j.total > 0 ? `Downloading to the PS5: ${Math.round((j.done / j.total) * 100)}%` : 'Downloading to the PS5…');
+      await sleep(1000);
+    }
+    const info = await (await fetch(`/api/game?id=${encodeURIComponent(id)}`)).json();
+    document.getElementById('title').textContent = info.game.title;
+    document.title = `${info.game.title} - Flashpoint PS5`;
+    if (!info.play || info.play.kind !== 'flash') { msg(info.play ? info.play.reason : 'Not a Flash entry.'); return; }
+
+    try {
+      await loadScript('/ruffle/ruffle.js'); // self-hosted copy, if you put one in wwwPath/ruffle/
+    } catch (e) {
+      try { await loadScript('https://unpkg.com/@ruffle-rs/ruffle'); } catch (e2) {
+        msg('Ruffle couldn’t be loaded. This device needs internet access, or a copy of Ruffle in the PS5’s wwwPath/ruffle folder.');
+        return;
+      }
+    }
+    const port = info.play.gameServerPort;
+    const server = `http://${location.hostname}:${port}`;
+    const swf = server + info.play.contentUrl;
+    const self = location.hostname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const player = window.RufflePlayer.newest().createPlayer();
+    const stage = document.getElementById('stage');
+    stage.replaceChildren(player);
+    const api = player.ruffle ? player.ruffle() : player;
+    api.load({
+      url: swf,
+      base: swf.slice(0, swf.split('?')[0].lastIndexOf('/') + 1),
+      urlRewriteRules: [[new RegExp(`^https?://(?!${self}:${port}/)(.*)$`), `${server}/$1`]],
+      autoplay: 'on',
+      unmuteOverlay: 'hidden',
+      letterbox: 'on',
+      allowScriptAccess: false,
+    });
+    document.getElementById('state').textContent = 'Playing from the PS5';
+  })().catch((e) => msg(`Something went wrong: ${e.message}`));
+  </script>
+</body>
+</html>

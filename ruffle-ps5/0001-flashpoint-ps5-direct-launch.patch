@@ -1,0 +1,273 @@
+diff --git a/patches/ruffle-flashpoint.patch b/patches/ruffle-flashpoint.patch
+new file mode 100644
+index 0000000..98fd402
+--- /dev/null
++++ b/patches/ruffle-flashpoint.patch
+@@ -0,0 +1,76 @@
++diff --git a/core/src/backend/navigator.rs b/core/src/backend/navigator.rs
++index 28b7029..9c14989 100644
++--- a/core/src/backend/navigator.rs
+++++ b/core/src/backend/navigator.rs
++@@ -522,6 +522,14 @@ impl NavigatorBackend for NullNavigatorBackend {
++         // left those games on their first frame.
++         #[cfg(ps5)]
++         tracing::info!("load {}", request.url());
+++        // Flashpoint PS5: answer http(s)://host/path from the unpacked game,
+++        // folders laid out as <root>/<host>/<path> (Flashpoint's content/ and
+++        // Legacy/htdocs layout), the way Flashpoint's game server would.
+++        #[cfg(ps5)]
+++        if let Some(local) = flashpoint_web_file(request.url()) {
+++            tracing::info!("flashpoint: {} -> {}", request.url(), local);
+++            return fetch_path(self, "NullNavigatorBackend", &local, None);
+++        }
++         #[cfg(ps5)]
++         if request.url().starts_with("http://") || request.url().starts_with("https://") {
++             let path = request.url().split(['?', '#']).next().unwrap_or("").to_ascii_lowercase();
++@@ -605,6 +613,56 @@ pub fn create_specific_fetch_error<ErrorType: Display>(
++     }
++ }
++ 
+++/// Roots set by the Ruffle Flash PS5 frontend for a Flashpoint launch
+++/// (RUFFLE_WEB_ROOTS, separated by ';'): the first one holding
+++/// <root>/<host>/<path> answers an http(s) request, as a file:// URL.
+++#[cfg(ps5)]
+++fn flashpoint_web_file(url: &str) -> Option<String> {
+++    let roots = std::env::var("RUFFLE_WEB_ROOTS").ok()?;
+++    let parsed = Url::parse(url).ok()?;
+++    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+++        return None;
+++    }
+++    let host = parsed.host_str()?.to_ascii_lowercase();
+++    // percent-decode the path ("my%20game/a.swf" is "my game/a.swf" on disk)
+++    let raw = parsed.path().as_bytes();
+++    let mut decoded = Vec::with_capacity(raw.len());
+++    let mut i = 0;
+++    while i < raw.len() {
+++        if raw[i] == b'%' && i + 2 < raw.len() {
+++            if let Some(b) = std::str::from_utf8(&raw[i + 1..i + 3])
+++                .ok()
+++                .and_then(|h| u8::from_str_radix(h, 16).ok())
+++            {
+++                decoded.push(b);
+++                i += 3;
+++                continue;
+++            }
+++        }
+++        decoded.push(raw[i]);
+++        i += 1;
+++    }
+++    let rel = String::from_utf8_lossy(&decoded).into_owned();
+++    for root in roots.split(';').filter(|r| !r.is_empty()) {
+++        let mut path = PathBuf::from(root);
+++        path.push(&host);
+++        for seg in rel.split('/') {
+++            match seg {
+++                "" | "." => continue,
+++                ".." => return None,
+++                _ => path.push(seg),
+++            }
+++        }
+++        if path.is_dir() {
+++            path.push("index.html");
+++        }
+++        if path.is_file() {
+++            return Url::from_file_path(&path).ok().map(|u| u.to_string());
+++        }
+++    }
+++    None
+++}
+++
++ // Url doesn't implement from_file_path and to_file_path for WASM targets.
++ // Therefore, we need to use cfg to make Ruffle compile for all targets.
++ 
+diff --git a/ps5/scripts/build.sh b/ps5/scripts/build.sh
+index 212235e..89a439a 100644
+--- a/ps5/scripts/build.sh
++++ b/ps5/scripts/build.sh
+@@ -14,6 +14,7 @@ if [[ ! -d $ruffle/.git ]]; then
+     git clone https://github.com/ruffle-rs/ruffle "$ruffle"
+     git -C "$ruffle" checkout "$ruffle_commit"
+     git -C "$ruffle" apply "$repo/patches/ruffle.patch"
++    git -C "$ruffle" apply "$repo/patches/ruffle-flashpoint.patch"
+ fi
+ if [[ ! -d $ruffle/patches/wgpu-hal ]]; then
+     mkdir -p "$ruffle/patches/wgpu-hal"
+diff --git a/src/flashpoint.rs b/src/flashpoint.rs
+new file mode 100644
+index 0000000..93e3997
+--- /dev/null
++++ b/src/flashpoint.rs
+@@ -0,0 +1,104 @@
++//! Direct launches from Flashpoint PS5 (the Flashpoint Launcher/Database
++//! port for PS5 homebrew).
++//!
++//! Flashpoint PS5 writes /data/ruffle/launch.txt, then starts this app:
++//!
++//! ```text
++//! title=Some Game
++//! swf=/data/ruffle/flashpoint/<id>/www.example.com/game/game.swf
++//! url=http://www.example.com/game/game.swf?level=2
++//! query=level=2
++//! root=/data/ruffle/flashpoint/<id>
++//! root=/data/flashpoint/Legacy/htdocs
++//! exit=1
++//! ```
++//!
++//! That game starts at once instead of the library. It believes it was
++//! loaded from `url` (for sitelocks), gets `query` as FlashVars, and its
++//! requests for http(s)://host/path are answered from the `root` folders
++//! (laid out as <root>/<host>/<path>; see patches/ruffle-flashpoint.patch).
++//! With exit=1 the app closes when the game is left from the quick menu.
++
++use std::fs;
++use std::sync::Mutex;
++
++pub const LAUNCH_FILE: &str = "/data/ruffle/launch.txt";
++/// Its presence tells Flashpoint PS5 this build reads launch.txt.
++pub const SUPPORT_FILE: &str = "/data/ruffle/.flashpoint-launch";
++/// Read by ruffle_core's NullNavigatorBackend.
++const ROOTS_ENV: &str = "RUFFLE_WEB_ROOTS";
++
++pub struct Launch {
++    pub swf: String,
++    pub url: Option<String>,
++    pub query: Option<String>,
++    pub roots: Vec<String>,
++    pub title: String,
++    pub exit_after: bool,
++}
++
++/// The running Flashpoint launch's page address and FlashVars.
++static CURRENT: Mutex<Option<(Option<String>, Option<String>)>> = Mutex::new(None);
++
++pub fn advertise() {
++    let _ = fs::write(SUPPORT_FILE, concat!(env!("CARGO_PKG_VERSION"), "\n"));
++}
++
++/// The pending launch, if any. The file is removed so it only runs once.
++pub fn take() -> Option<Launch> {
++    let text = fs::read_to_string(LAUNCH_FILE).ok()?;
++    let _ = fs::remove_file(LAUNCH_FILE);
++    let mut launch = Launch {
++        swf: String::new(),
++        url: None,
++        query: None,
++        roots: Vec::new(),
++        title: String::new(),
++        exit_after: true,
++    };
++    for line in text.lines() {
++        if line.starts_with('#') {
++            continue;
++        }
++        let Some((key, value)) = line.split_once('=') else { continue };
++        let value = value.trim().to_string();
++        match key.trim() {
++            "swf" => launch.swf = value,
++            "url" if !value.is_empty() => launch.url = Some(value),
++            "query" if !value.is_empty() => launch.query = Some(value),
++            "root" if !value.is_empty() => launch.roots.push(value),
++            "title" => launch.title = value,
++            "exit" => launch.exit_after = value != "0",
++            _ => {}
++        }
++    }
++    if launch.swf.is_empty() || !std::path::Path::new(&launch.swf).is_file() {
++        println!("[Flashpoint] launch.txt names no readable SWF ({})", launch.swf);
++        return None;
++    }
++    println!("[Flashpoint] launching {} ({})", launch.title, launch.swf);
++    Some(launch)
++}
++
++/// Starts (or, with None, ends) a Flashpoint launch.
++pub fn begin(launch: Option<&Launch>) {
++    // Safety: only this thread reads or writes the environment, and the
++    // player that reads it is created afterwards.
++    unsafe {
++        match launch {
++            Some(l) if !l.roots.is_empty() => std::env::set_var(ROOTS_ENV, l.roots.join(";")),
++            _ => std::env::remove_var(ROOTS_ENV),
++        }
++    }
++    *CURRENT.lock().unwrap() = launch.map(|l| (l.url.clone(), l.query.clone()));
++}
++
++/// The address the game should believe it was loaded from.
++pub fn spoof_url() -> Option<String> {
++    CURRENT.lock().unwrap().as_ref().and_then(|c| c.0.clone())
++}
++
++/// FlashVars from the launch command's query string.
++pub fn query() -> Option<String> {
++    CURRENT.lock().unwrap().as_ref().and_then(|c| c.1.clone())
++}
+diff --git a/src/main.rs b/src/main.rs
+index 4f3a9a6..5936a1d 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -14,6 +14,7 @@ macro_rules! println {
+ mod audio;
+ mod badges;
+ mod covers;
++mod flashpoint;
+ mod cpu;
+ mod display;
+ mod fsutil;
+@@ -382,6 +383,34 @@ fn run() {
+         let _ = fs::remove_file(PROGRESS_FILE);
+     }
+ 
++    // Flashpoint PS5 asked for one game: play it first, then leave (back to
++    // the browser) or carry on to the library.
++    flashpoint::advertise();
++    if let Some(launch) = flashpoint::take() {
++        stage("flashpoint launch");
++        let key = covers::game_key(&launch.swf);
++        let name = if launch.title.is_empty() { key.clone() } else { launch.title.clone() };
++        flashpoint::begin(Some(&launch));
++        library.mark_played(&launch.swf);
++        let mut settings = library.settings.clone();
++        app.input.cursor_speed = settings.cursor_multiplier();
++        let mut session = badges::Session::default();
++        while game_session(&mut app, &launch.swf, &name, &key, &mut settings, &mut session) == GameEnd::Restart {
++            session.restarts += 1;
++        }
++        library.record_session(&key, &session);
++        let _ = fs::remove_file(PROGRESS_FILE);
++        flashpoint::begin(None);
++        if settings.volume != library.settings.volume {
++            library.settings.volume = settings.volume;
++            library.settings.save();
++        }
++        if launch.exit_after {
++            return;
++        }
++        app.input.keys_as_pad = true;
++    }
++
+     loop {
+         stage("game library");
+         let path = library_session(&mut app, &mut library);
+@@ -532,7 +561,11 @@ fn game_session(
+         let url = if job_path.is_empty() {
+             "file:///data/ruffle/test.swf".to_string()
+         } else {
+-            format!("file://{}", job_path)
++            // a Flashpoint launch command's query string becomes FlashVars
++            match flashpoint::query() {
++                Some(q) => format!("file://{}?{}", job_path, q),
++                None => format!("file://{}", job_path),
++            }
+         };
+         let movie = SwfMovie::from_data(&swf_data, url, None, None).map_err(|e| format!("can't read it: {}", e))?;
+         // One GPU device for the app's life: games after the first froze when
+@@ -679,7 +712,7 @@ fn game_session(
+     // A console app is always full screen; games see that, and Letterbox
+     // "Fullscreen Only" does what it says.
+     builder = builder.with_fullscreen(true);
+-    let spoof_url = settings.spoofed_url(path);
++    let spoof_url = flashpoint::spoof_url().or_else(|| settings.spoofed_url(path));
+     if spoof_url.is_some() {
+         builder = builder.with_spoofed_url(spoof_url.clone());
+     }

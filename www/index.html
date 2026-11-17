@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flashpoint PS5</title>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="stylesheet" href="/app.css">
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="#/library" data-nav>
+      <img src="/img/logo.svg" alt="">
+      <span>Flashpoint <b>PS5</b></span>
+    </a>
+    <nav class="tabs" aria-label="Sections">
+      <span class="hint" aria-hidden="true">L1</span>
+      <a href="#/library" data-tab="library">Library</a>
+      <a href="#/played" data-tab="played">Played</a>
+      <a href="#/installed" data-tab="installed">On this PS5</a>
+      <a href="#/stats" data-tab="stats">Statistics</a>
+      <a href="#/help" data-tab="help">Setup</a>
+      <span class="hint" aria-hidden="true">R1</span>
+    </nav>
+    <div class="jobs" id="jobs" aria-live="polite"></div>
+  </header>
+  <main id="main" tabindex="-1"></main>
+  <div class="toast" id="toast" role="status" hidden></div>
+</body>
+</html>

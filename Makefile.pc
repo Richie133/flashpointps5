@@ -1,0 +1,51 @@
+# Flashpoint PS5 - PC test build (Linux/macOS/FreeBSD). Same code, with the
+# console calls logged instead and downloads done by the curl tool.
+#   make -f Makefile.pc
+#   ./build/pc/fpps5 --root /path/to/Flashpoint --no-browser
+#   then open http://localhost:22600/
+
+CC     ?= cc
+PYTHON ?= python3
+BUILD  := build/pc
+BIN    := $(BUILD)/fpps5
+
+APP_SRCS := src/main.c src/util.c src/config.c src/httpd.c src/library.c \
+            src/gamedata.c src/launch.c src/gameserver.c src/api.c \
+            src/net_pc.c src/platform_pc.c
+TP_SRCS  := third_party/sqlite/sqlite3.c third_party/miniz/miniz.c \
+            third_party/cjson/cJSON.c third_party/sha256/sha256.c
+GEN_SRC  := $(BUILD)/assets_gen.c
+WWW      := $(shell find www -type f)
+
+CFLAGS   := -O2 -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-format-truncation -Werror -D_GNU_SOURCE
+TPFLAGS  := -O2 -g -w -D_GNU_SOURCE -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION \
+            -DSQLITE_DEFAULT_MEMSTATUS=0 -DHAVE_USLEEP=1
+LDLIBS   := -lpthread -lm -ldl
+
+APP_OBJS := $(APP_SRCS:%.c=$(BUILD)/%.o)
+TP_OBJS  := $(TP_SRCS:%.c=$(BUILD)/%.o)
+
+all: $(BIN)
+
+$(BUILD)/src/%.o: src/%.c $(wildcard src/*.h)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/third_party/%.o: third_party/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(TPFLAGS) -c -o $@ $<
+
+$(GEN_SRC): tools/embed.py $(WWW)
+	@mkdir -p $(dir $@)
+	$(PYTHON) tools/embed.py www $@
+
+$(BUILD)/assets_gen.o: $(GEN_SRC)
+	$(CC) -O1 -w -Isrc -c -o $@ $<
+
+$(BIN): $(APP_OBJS) $(TP_OBJS) $(BUILD)/assets_gen.o
+	$(CC) -o $@ $^ $(LDLIBS)
+
+clean:
+	rm -rf $(BUILD)
+
+.PHONY: all clean

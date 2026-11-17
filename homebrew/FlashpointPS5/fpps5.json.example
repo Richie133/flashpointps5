@@ -1,0 +1,16 @@
+{
+  "flashpointPath": "/data/flashpoint",
+  "runPath": "/data/ruffle/flashpoint",
+  "uiPort": 22600,
+  "gameServerPort": 22500,
+  "openBrowser": true,
+  "filterExtreme": true,
+  "keepRunDirs": 4,
+  "gameDataSources": ["https://download.flashpointarchive.org/gib-roms/Games/"],
+  "imagesUrl": "https://infinity.flashpointarchive.org/Flashpoint/Data/Images/",
+  "legacyFallbackUrl": "https://infinity.flashpointarchive.org/Flashpoint/Legacy/htdocs/",
+  "onlineApi": "https://db-api.unstable.life",
+  "ruffleTitleId": "PPSA68091",
+  "ruffleDir": "/data/ruffle",
+  "ruffleMode": "auto"
+}

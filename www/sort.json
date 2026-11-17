@@ -1,0 +1,43 @@
+[
+  {
+    "name": "title",
+    "displayName": "Title",
+    "fields": [
+      "title"
+    ]
+  },
+  {
+    "name": "creator",
+    "displayName": "Creator",
+    "fields": [
+      "developer",
+      "publisher"
+    ]
+  },
+  {
+    "name": "platform",
+    "displayName": "Platform",
+    "fields": [
+      "platform"
+    ]
+  },
+  {
+    "name": "dateAdded",
+    "displayName": "Date Added",
+    "fields": [
+      "dateAdded"
+    ]
+  },
+  {
+    "name": "dateModified",
+    "displayName": "Date Modified",
+    "fields": [
+      "dateModified"
+    ]
+  },
+  {
+    "name": "random",
+    "displayName": "Random",
+    "fields": []
+  }
+]
