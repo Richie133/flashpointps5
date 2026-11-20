@@ -1,9 +1,14 @@
 // Flashpoint PS5 - the system keyboard (libSceImeDialog) and web browser.
 // The keyboard follows ps5-payload-dev/offact's IME_dialog.c (GPL-3.0).
+// libSceImeDialog isn't loaded when a homebrew title starts, and a direct
+// import of sceImeDialogInit was left at address 0 (0.0.4 crashed on
+// Search). It's loaded through its sysmodule ID, 0x0096, as the xash3d PS4
+// port does, and its functions looked up.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "fp/services.hpp"
 
+#include "platform/ps5/modules.hpp"
 #include "platform/ps5/system.hpp"
 
 #include <cstdint>
@@ -46,10 +51,6 @@ extern "C"
 {
 int sceUserServiceInitialize(void *);
 int sceUserServiceGetForegroundUser(int *);
-int sceImeDialogInit(const ImeDialogParam *, void *);
-int sceImeDialogGetStatus(void);
-int sceImeDialogGetResult(ImeDialogResult *);
-int sceImeDialogTerm(void);
 int sceSystemServiceLaunchWebBrowser(const char *uri, void *);
 }
 
@@ -61,6 +62,35 @@ namespace
 std::uint16_t g_text[512];
 std::uint16_t g_title[128];
 bool g_open = false;
+
+struct Ime
+{
+    bool tried = false;
+    int (*init)(const ImeDialogParam *, void *) = nullptr;
+    int (*get_status)(void) = nullptr;
+    int (*get_result)(ImeDialogResult *) = nullptr;
+    int (*term)(void) = nullptr;
+    bool ok() const { return init && get_status && get_result && term; }
+};
+Ime g_ime;
+
+// Loads libSceImeDialog the first time; false when it can't be used.
+bool ime_ready()
+{
+    if (!g_ime.tried)
+    {
+        g_ime.tried = true;
+        const int handle = ps5::load_module(0x0096, "libSceImeDialog");
+        g_ime.init = reinterpret_cast<int (*)(const ImeDialogParam *, void *)>(
+            ps5::module_symbol(handle, "sceImeDialogInit"));
+        g_ime.get_status = reinterpret_cast<int (*)(void)>(ps5::module_symbol(handle, "sceImeDialogGetStatus"));
+        g_ime.get_result =
+            reinterpret_cast<int (*)(ImeDialogResult *)>(ps5::module_symbol(handle, "sceImeDialogGetResult"));
+        g_ime.term = reinterpret_cast<int (*)(void)>(ps5::module_symbol(handle, "sceImeDialogTerm"));
+        sys::log("[FP] keyboard dialog: functions %s", g_ime.ok() ? "found" : "missing");
+    }
+    return g_ime.ok();
+}
 
 void to_utf16(const std::string &in, std::uint16_t *out, std::size_t cap)
 {
@@ -116,6 +146,8 @@ bool keyboard_open(const std::string &title, const std::string &text)
 {
     if (g_open)
         return true;
+    if (!ime_ready())
+        return false; // the app's own keyboard takes over
     to_utf16(title, g_title, sizeof(g_title) / sizeof(g_title[0]));
     to_utf16(text, g_text, sizeof(g_text) / sizeof(g_text[0]));
     ImeDialogParam param;
@@ -135,7 +167,7 @@ bool keyboard_open(const std::string &title, const std::string &text)
         sys::log("[FP] keyboard: no foreground user (%x)", rc);
         return false;
     }
-    rc = sceImeDialogInit(&param, nullptr);
+    rc = g_ime.init(&param, nullptr);
     if (rc != 0)
     {
         sys::log("[FP] keyboard: sceImeDialogInit %x", rc);
@@ -149,7 +181,7 @@ KeyboardState keyboard_poll(std::string *text)
 {
     if (!g_open)
         return KeyboardState::idle;
-    const int status = sceImeDialogGetStatus();
+    const int status = g_ime.get_status();
     if (status == 1)
         return KeyboardState::open;
     if (status != 2)
@@ -159,8 +191,8 @@ KeyboardState keyboard_poll(std::string *text)
     }
     ImeDialogResult result;
     std::memset(&result, 0, sizeof(result));
-    sceImeDialogGetResult(&result);
-    sceImeDialogTerm();
+    g_ime.get_result(&result);
+    g_ime.term();
     g_open = false;
     if (result.outcome != 0)
         return KeyboardState::cancelled;

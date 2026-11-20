@@ -139,6 +139,8 @@ hui::InputFrame press(const std::string &n)
         bit(Action::north);
     else if (n == "square")
         bit(Action::west);
+    else if (n == "options")
+        bit(Action::menu);
     return f;
 }
 
@@ -280,6 +282,39 @@ int main(int argc, char **argv)
         app.open_tab(0);
         run(1.5f);
         return picture("23-synced-home") && ok ? 0 : 1;
+    }
+
+    if (tour && std::strcmp(tour, "themes") == 0)
+    {
+        // every theme on the Arcade (Config's first row cycles them), then
+        // the app's own keyboard (run with FP_NO_IME=1)
+        const auto tap = [&](const char *button) {
+            frame(press(button));
+            run(0.15f);
+        };
+        const char *const names[] = {"flashpoint", "y8", "daylight", "midnight", "ember", "terminal"};
+        bool ok = true;
+        for (const char *name : names)
+        {
+            app.open_tab(1);
+            run(2.5f);
+            ok = picture(std::string("30-theme-") + name) && ok;
+            app.open_tab(5);
+            run(0.3f);
+            if (std::strcmp(name, "y8") == 0)
+                ok = picture("31-theme-y8-config") && ok;
+            tap("cross");
+        }
+        app.open_tab(1);
+        run(1.5f);
+        tap("triangle");
+        for (const char *b : {"right", "right", "cross", "down", "cross", "right", "cross"})
+            tap(b);
+        ok = picture("32-own-keyboard") && ok;
+        tap("options");
+        run(2.5f);
+        ok = picture("33-own-keyboard-searched") && ok;
+        return ok ? 0 : 1;
     }
 
     bool ok = true;

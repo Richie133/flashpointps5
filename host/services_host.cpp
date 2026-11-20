@@ -22,6 +22,8 @@ void init()
 
 bool keyboard_open(const std::string &, const std::string &)
 {
+    if (std::getenv("FP_NO_IME")) // as on a PS5 where the system keyboard won't load
+        return false;
     g_open = true;
     g_frames = 0;
     return true;

@@ -251,6 +251,26 @@ class App
     Browse browse_[2];
     WebState web_;
     Detail detail_;
+    // The app's own keyboard, for when the system keyboard can't open.
+    struct Osk
+    {
+        bool open = false;
+        int purpose = 0; // as keyboard_: 1 search, 2 .swf address
+        std::string title, text;
+        int row = 1, col = 0;
+        bool caps = false, symbols = false;
+    };
+    Osk osk_;
+    void open_osk(int purpose, const std::string &title, const std::string &text);
+    void close_osk(bool accept);
+    void update_osk(const InputFrame &input);
+    void osk_press(int row, int col);
+    void osk_click(float x, float y);
+    gfx::Rect osk_panel() const;
+    gfx::Rect osk_key_rect(int row, int col) const;
+    std::string osk_key_label(int row, int col) const;
+    void draw_osk(gfx::DrawList &list) const;
+
     std::string search_;                            // the open tab's search box
     std::array<std::string, kTabCount> tab_search_; // each tab keeps its own
     float search_wait_ = -1.0f;

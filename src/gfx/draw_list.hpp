@@ -131,6 +131,9 @@ class DrawList
     void clear();
 
     // ---- shapes ----
+    // Multiplies the radius of rounded_rect, gradient_rect and bordered_rect
+    // (1 = as given, 0 = square corners).
+    void set_corner_scale(float scale) { corner_scale_ = scale; }
     void rounded_rect(const Rect &r, float radius, Color fill);
     // Vertical gradient (top to bottom).
     void gradient_rect(const Rect &r, float radius, Color top, Color bottom);
@@ -233,6 +236,7 @@ class DrawList
     std::vector<float> opacities_;
     Transform transform_;
     float opacity_ = 1.0f;
+    float corner_scale_ = 1.0f; // rounded and bordered rects; a theme may square them off
     std::vector<GlyphQuad> glyph_scratch_;
     std::vector<MeshVertex> mesh_;
     std::vector<std::uint32_t> index_scratch_;

@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to publish, e.g. v0.0.4-alpha (created if new; empty only builds)
+        description: Release tag to publish, e.g. v0.0.5-alpha (created if new; empty only builds)
         type: string
         default: ''
       publish:

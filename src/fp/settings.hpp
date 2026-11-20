@@ -16,6 +16,7 @@ struct Settings
     bool show_extreme = false;  // Flashpoint's extreme entries
     bool web_adult = false;     // entries the websites mark NSFW
     int tile_size = 1;          // 0 small, 1 medium, 2 large
+    int theme = 0;              // index into the app's theme list (0 Flashpoint)
     bool usb_input = true;      // USB keyboard and mouse
     bool usb_trying = false;    // set while they start: a crash there turns them off
     std::string sort = "title"; // title, dateAdded, developer, releaseDate, random

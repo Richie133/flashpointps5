@@ -23,24 +23,76 @@ using gfx::Align;
 using gfx::Color;
 using gfx::Rect;
 
-// The Flashpoint Launcher's dark theme.
-const Color kBg = Color::rgb(0x1c1c1e);
-const Color kPanel = Color::rgb(0x252527);
-const Color kBar = Color::rgb(0x2c2c2f);
-const Color kRow = Color::rgb(0x303034);
-const Color kRowHover = Color::rgb(0x3a3a3f);
-const Color kTileBox = Color::rgb(0x2a2a2d);
-const Color kLine = Color::rgb(0x3c3c41);
-const Color kText = Color::rgb(0xe8e8ea);
-const Color kMuted = Color::rgb(0xa2a2a8);
-const Color kDim = Color::rgb(0x6e6e75);
-const Color kAccent = Color::rgb(0x7d2593);   // selection, as the launcher's
-const Color kAccentHi = Color::rgb(0xb45fd0); // focus ring
-const Color kRed = Color::rgb(0xdd0428);
-const Color kGreen = Color::rgb(0x62c46e);
-const Color kWarn = Color::rgb(0xffc35a);
-const Color kInput = Color::rgb(0x18181a);
-const Color kWhite = Color::rgb(0xffffff);
+// Colors of the open theme (apply_theme sets them). The first theme is the
+// Flashpoint Launcher's dark one.
+Color kBg, kPanel, kBar, kRow, kRowHover, kTileBox, kLine, kText, kMuted, kDim;
+Color kAccent;      // selection, as the launcher's
+Color kAccentHi;    // focus ring
+Color kAccentHover; // a button under the pointer
+Color kRed, kGreen, kWarn, kInput;
+Color kMark; // the play triangle of the logo
+const Color kWhite = Color::rgb(0xffffff); // on the accent, and picture tints
+float g_corners = 1.0f;     // corner rounding, times the usual
+bool g_link_titles = false; // tile titles as red underlined links (Y8)
+
+Color faded(Color c, float alpha)
+{
+    c.a *= alpha;
+    return c;
+}
+
+struct ThemeDef
+{
+    const char *name;
+    std::uint32_t bg, panel, bar, row, row_hover, tile, line, text, muted, dim;
+    std::uint32_t accent, accent_hi, accent_hover, red, green, warn, input, mark;
+    float corners;
+    bool link_titles;
+};
+
+// clang-format off
+const ThemeDef kThemes[] = {
+    {"Flashpoint", 0x1c1c1e, 0x252527, 0x2c2c2f, 0x303034, 0x3a3a3f, 0x2a2a2d, 0x3c3c41, 0xe8e8ea, 0xa2a2a8, 0x6e6e75,
+     0x7d2593, 0xb45fd0, 0x9131a9, 0xdd0428, 0x62c46e, 0xffc35a, 0x18181a, 0xf3f4f7, 1.0f, false},
+    // gray page, white boxes, red underlined links: the 2000s Flash portal look
+    {"Y8", 0xc9c9c9, 0xffffff, 0xe4e4e4, 0xf1f1f1, 0xdedede, 0xffffff, 0x9a9a9a, 0x111111, 0x3a3a3a, 0x7a7a7a,
+     0xc0261c, 0xd8382c, 0xa81e15, 0xc0261c, 0x2b8a3e, 0xa66a00, 0xffffff, 0x1a1a1a, 0.25f, true},
+    {"Daylight", 0xeef0f4, 0xffffff, 0xffffff, 0xf1f3f7, 0xe2e6ee, 0xe9ecf1, 0xd3d8e0, 0x15181e, 0x525966, 0x8b919c,
+     0x0f7a70, 0x16a596, 0x0c6159, 0xd0263a, 0x2b8a3e, 0xb07800, 0xffffff, 0x15181e, 1.0f, false},
+    {"Midnight", 0x0c1322, 0x121b2e, 0x162036, 0x1b263e, 0x23314e, 0x172036, 0x293752, 0xe5ebf6, 0x98a6c0, 0x5f6e8a,
+     0x2b63c6, 0x6b9dff, 0x3a74da, 0xe0334d, 0x5cc88a, 0xffc35a, 0x0a0f1b, 0xffffff, 1.0f, false},
+    {"Ember", 0x191613, 0x221d19, 0x29231e, 0x302924, 0x3a322b, 0x25201b, 0x40372f, 0xf3ece3, 0xb4a795, 0x7a6e60,
+     0xc85a17, 0xff9547, 0xdc6a24, 0xe03a2c, 0x7cc46a, 0xffc35a, 0x14110f, 0xffffff, 1.0f, false},
+    {"Terminal", 0x050805, 0x0a100a, 0x0d150d, 0x101b10, 0x16261a, 0x0c140c, 0x1d3320, 0x9cffb0, 0x5fbf72, 0x3a7a48,
+     0x1f7a34, 0x3dff74, 0x2a9a44, 0xff5a4a, 0x3dff74, 0xe8ff5a, 0x030503, 0x9cffb0, 0.0f, false},
+};
+// clang-format on
+constexpr int kThemeCount = static_cast<int>(sizeof(kThemes) / sizeof(kThemes[0]));
+
+void apply_theme(int index)
+{
+    const ThemeDef &t = kThemes[std::clamp(index, 0, kThemeCount - 1)];
+    kBg = Color::rgb(t.bg);
+    kPanel = Color::rgb(t.panel);
+    kBar = Color::rgb(t.bar);
+    kRow = Color::rgb(t.row);
+    kRowHover = Color::rgb(t.row_hover);
+    kTileBox = Color::rgb(t.tile);
+    kLine = Color::rgb(t.line);
+    kText = Color::rgb(t.text);
+    kMuted = Color::rgb(t.muted);
+    kDim = Color::rgb(t.dim);
+    kAccent = Color::rgb(t.accent);
+    kAccentHi = Color::rgb(t.accent_hi);
+    kAccentHover = Color::rgb(t.accent_hover);
+    kRed = Color::rgb(t.red);
+    kGreen = Color::rgb(t.green);
+    kWarn = Color::rgb(t.warn);
+    kInput = Color::rgb(t.input);
+    kMark = Color::rgb(t.mark);
+    g_corners = t.corners;
+    g_link_titles = t.link_titles;
+}
 
 constexpr float kW = 1920.0f, kH = 1080.0f;
 constexpr float kMenuH = 64.0f, kStatusH = 44.0f;
@@ -62,8 +114,9 @@ const SortOption kSorts[] = {{"title", "Title"},
 constexpr int kSortCount = 5;
 constexpr int kPopupRows = kSortCount + 2; // + ascending, descending
 
-constexpr int kConfigRows = 11;
+constexpr int kConfigRows = 12;
 const char *const kConfigLabels[kConfigRows] = {
+    "Theme",
     "Play the intro when the app starts",
     "Music volume",
     "Interface sounds",
@@ -163,7 +216,7 @@ bool is_shape(const std::string &g)
 
 // The app's mark: a play triangle with a bolt through it, in a size x size box
 // (the same shape as sce_sys/icon0.png, tools/make-icon.py).
-void draw_mark(gfx::DrawList &list, float x, float y, float size)
+void draw_mark(gfx::DrawList &list, float x, float y, float size, Color fill = Color::rgb(0xf3f4f7))
 {
     const float tri[3][2] = {{0.25f, 0.14f}, {0.86f, 0.50f}, {0.25f, 0.86f}};
     float pts[3 * 9 * 2];
@@ -190,7 +243,7 @@ void draw_mark(gfx::DrawList &list, float x, float y, float size)
             ++n;
         }
     }
-    list.polygon(pts, n, Color::rgb(0xf3f4f7));
+    list.polygon(pts, n, fill);
     const float bolt[] = {0.555f, 0.20f, 0.355f, 0.545f, 0.505f, 0.545f, 0.43f, 0.80f,
                           0.665f, 0.44f, 0.515f, 0.44f, 0.60f, 0.20f};
     float b[14];
@@ -210,6 +263,7 @@ App::App(const Fonts &fonts, Backend &backend, Images &images, std::string setti
     : fonts_(fonts), backend_(backend), images_(images), settings_path_(std::move(settings_path))
 {
     settings_ = Settings::load(settings_path_);
+    apply_theme(settings_.theme);
     browse_[0].library = "arcade";
     browse_[1].library = "theatre";
     browse_[0].filter = browse_[1].filter = settings_.ps5_only ? 1 : 0;
@@ -856,6 +910,11 @@ void App::update(const InputFrame &raw, const PadSample &pad, const hid::Frame &
     }
 
     handle_keyboard(hid, input);
+    if (osk_.open)
+    {
+        update_osk(input);
+        return;
+    }
 
     const Link link = backend_.link();
     if (link != last_link_)
@@ -1112,6 +1171,32 @@ void App::handle_keyboard(const hid::Frame &hid, InputFrame &input)
 {
     if (hid.keyboard)
         usb_keyboard_ = true;
+    if (osk_.open) // a USB keyboard types into the app's keyboard too
+    {
+        for (std::uint16_t key : hid.pressed)
+        {
+            if (key == hid::key::kEnter)
+                return close_osk(true);
+            if (key == hid::key::kEscape)
+                return close_osk(false);
+            if (key == hid::key::kBackspace && !osk_.text.empty())
+                osk_.text.pop_back();
+            else if (key == hid::key::kUp)
+                input.nav = Direction::up;
+            else if (key == hid::key::kDown)
+                input.nav = Direction::down;
+            else if (key == hid::key::kLeft)
+                input.nav = Direction::left;
+            else if (key == hid::key::kRight)
+                input.nav = Direction::right;
+        }
+        for (char c : hid.text)
+        {
+            if (c >= 32 && c < 127 && osk_.text.size() < 200)
+                osk_.text += c;
+        }
+        return;
+    }
     const auto press = [&](Action a) { input.pressed |= action_bit(a); };
     for (std::uint16_t key : hid.pressed)
     {
@@ -1197,7 +1282,7 @@ void App::hover(float x, float y)
 {
     pointer_.hover_region = -1;
     pointer_.hover_index = -1;
-    if (y < kMenuH || y > kH - kStatusH || popup_)
+    if (y < kMenuH || y > kH - kStatusH || popup_ || osk_.open)
         return;
     if ((browse() || tab_ == kWeb) && inside(grid_area(), x, y))
     {
@@ -1231,6 +1316,8 @@ void App::hover(float x, float y)
 
 void App::scroll_at(float x, float y, float pixels)
 {
+    if (osk_.open)
+        return;
     if (tab_ == kLogs)
     {
         log_scroll_ = std::max(0.0f, log_scroll_ + pixels);
@@ -1248,6 +1335,11 @@ void App::scroll_at(float x, float y, float pixels)
 
 void App::click(float x, float y, bool twice)
 {
+    if (osk_.open)
+    {
+        osk_click(x, y);
+        return;
+    }
     if (popup_)
     {
         for (int i = 0; i < kPopupRows; ++i)
@@ -1478,12 +1570,188 @@ void App::activate_sidebar(int row)
 void App::open_keyboard(int purpose)
 {
     sound(static_cast<int>(audio::Sfx::open));
-    const bool ok = purpose == 1 ? services::keyboard_open("Search", search_)
-                                 : services::keyboard_open("Address of a .swf file (or a page with one)", "https://");
-    if (ok)
+    const std::string title = purpose == 1 ? "Search" : "Address of a .swf file (or a page with one)";
+    const std::string text = purpose == 1 ? search_ : "https://";
+    if (services::keyboard_open(title, text))
         keyboard_ = purpose;
     else
-        toast("The system keyboard didn't open.", true);
+        open_osk(purpose, title, text); // no system keyboard: the app's own
+}
+
+// ================================================================= the app's keyboard
+
+namespace
+{
+constexpr int kOskRows = 5, kOskCols = 10;
+const char *const kOskLetters[3] = {"qwertyuiop", "asdfghjkl:", "zxcvbnm./_"};
+const char *const kOskSymbols[3] = {"!@#$%^&*()", "-_=+[]{}\\|", ";:'\",.<>/?"};
+// the bottom row: Caps, Symbols, Space, Delete, Done, in tenths of the width
+const float kOskBottomStart[5] = {0.0f, 1.5f, 3.0f, 6.0f, 8.0f};
+const float kOskBottomWidth[5] = {1.5f, 1.5f, 3.0f, 2.0f, 2.0f};
+int osk_cols(int row) { return row == kOskRows - 1 ? 5 : kOskCols; }
+} // namespace
+
+void App::open_osk(int purpose, const std::string &title, const std::string &text)
+{
+    osk_ = Osk{};
+    osk_.open = true;
+    osk_.purpose = purpose;
+    osk_.title = title;
+    osk_.text = text;
+    osk_.row = 1;
+}
+
+void App::close_osk(bool accept)
+{
+    osk_.open = false;
+    sound(static_cast<int>(accept ? audio::Sfx::select : audio::Sfx::back));
+    if (!accept)
+        return;
+    if (osk_.purpose == 1)
+        apply_search(osk_.text);
+    else
+        start_swf_link(osk_.text);
+}
+
+Rect App::osk_panel() const { return {400.0f, 250.0f, 1120.0f, 620.0f}; }
+
+Rect App::osk_key_rect(int row, int col) const
+{
+    const Rect p = osk_panel();
+    const float unit = (p.w - 80.0f) / kOskCols;
+    const float y = p.y + 190.0f + row * 80.0f;
+    if (row == kOskRows - 1)
+        return {p.x + 40.0f + kOskBottomStart[col] * unit, y, kOskBottomWidth[col] * unit - 10.0f, 70.0f};
+    return {p.x + 40.0f + col * unit, y, unit - 10.0f, 70.0f};
+}
+
+std::string App::osk_key_label(int row, int col) const
+{
+    if (row == 0)
+        return std::string(1, "1234567890"[col]);
+    if (row == kOskRows - 1)
+    {
+        const char *const names[5] = {"Caps", osk_.symbols ? "abc" : "#+=", "Space", "Delete", "Done"};
+        return names[col];
+    }
+    char c = (osk_.symbols ? kOskSymbols : kOskLetters)[row - 1][col];
+    if (osk_.caps && c >= 'a' && c <= 'z')
+        c = static_cast<char>(c - 'a' + 'A');
+    return std::string(1, c);
+}
+
+void App::osk_press(int row, int col)
+{
+    if (row == kOskRows - 1)
+    {
+        switch (col)
+        {
+        case 0: osk_.caps = !osk_.caps; break;
+        case 1: osk_.symbols = !osk_.symbols; break;
+        case 2:
+            if (osk_.text.size() < 200)
+                osk_.text += ' ';
+            break;
+        case 3:
+            if (!osk_.text.empty())
+                osk_.text.pop_back();
+            break;
+        default: close_osk(true); return;
+        }
+        sound(static_cast<int>(audio::Sfx::move));
+        return;
+    }
+    if (osk_.text.size() < 200)
+        osk_.text += osk_key_label(row, col);
+    sound(static_cast<int>(audio::Sfx::move));
+}
+
+void App::osk_click(float x, float y)
+{
+    for (int row = 0; row < kOskRows; ++row)
+    {
+        for (int col = 0; col < osk_cols(row); ++col)
+        {
+            if (inside(osk_key_rect(row, col), x, y))
+            {
+                osk_.row = row;
+                osk_.col = col;
+                osk_press(row, col);
+                return;
+            }
+        }
+    }
+}
+
+void App::update_osk(const InputFrame &input)
+{
+    if (input.nav == Direction::left || input.nav == Direction::right)
+    {
+        const int n = osk_cols(osk_.row);
+        osk_.col = (osk_.col + (input.nav == Direction::left ? n - 1 : 1)) % n;
+        sound(static_cast<int>(audio::Sfx::move));
+    }
+    else if (input.nav == Direction::up || input.nav == Direction::down)
+    {
+        // to the key in the next row that sits nearest under (or over) this one
+        const int to = (osk_.row + (input.nav == Direction::up ? kOskRows - 1 : 1)) % kOskRows;
+        const float cx = osk_key_rect(osk_.row, osk_.col).cx();
+        int best = 0;
+        for (int col = 1; col < osk_cols(to); ++col)
+        {
+            if (std::fabs(osk_key_rect(to, col).cx() - cx) < std::fabs(osk_key_rect(to, best).cx() - cx))
+                best = col;
+        }
+        osk_.row = to;
+        osk_.col = best;
+        sound(static_cast<int>(audio::Sfx::move));
+    }
+    if (input.is_pressed(Action::confirm))
+        osk_press(osk_.row, osk_.col);
+    else if (input.is_pressed(Action::west))
+        osk_press(kOskRows - 1, 3); // delete
+    else if (input.is_pressed(Action::north))
+        osk_press(kOskRows - 1, 2); // space
+    else if (input.is_pressed(Action::l3))
+        osk_press(kOskRows - 1, 0); // caps
+    else if (input.is_pressed(Action::menu) || input.is_pressed(Action::jump_next))
+        close_osk(true);
+    else if (input.is_pressed(Action::back))
+        close_osk(false);
+}
+
+void App::draw_osk(gfx::DrawList &list) const
+{
+    list.rounded_rect({0, 0, kW, kH}, 0, Color::rgb(0x000000, 0.55f));
+    const Rect p = osk_panel();
+    list.shadow(p, 16, 40, Color::rgb(0x000000, 0.5f));
+    list.bordered_rect(p, 16, kPanel, 1.0f, kLine);
+    ui::text(list, fonts_.bold, osk_.title, p.x + 40, p.y + 58, 28, kText);
+    // what's typed so far, its end in view
+    const Rect field{p.x + 40, p.y + 86, p.w - 80, 70};
+    list.bordered_rect(field, 8, kInput, 2.0f, kAccentHi);
+    std::string shown = osk_.text;
+    const float room = field.w - 48;
+    while (!shown.empty() && fonts_.regular.measure(shown, 28) > room)
+        shown.erase(0, 1);
+    ui::text(list, fonts_.regular, shown, field.x + 20, field.cy() + 10, 28, kText);
+    if (std::fmod(clock_, 1.0f) < 0.6f)
+        list.rounded_rect({field.x + 22 + fonts_.regular.measure(shown, 28), field.y + 16, 3, field.h - 32}, 1.5f,
+                          kAccentHi);
+    for (int row = 0; row < kOskRows; ++row)
+    {
+        for (int col = 0; col < osk_cols(row); ++col)
+        {
+            const Rect k = osk_key_rect(row, col);
+            const bool f = osk_.row == row && osk_.col == col;
+            const bool hot = pointer_.visible && inside(k, pointer_.x, pointer_.y);
+            const bool lit = row == kOskRows - 1 && ((col == 0 && osk_.caps) || (col == 1 && osk_.symbols));
+            list.bordered_rect(k, 8, f ? kAccent : hot ? kRowHover : kRow, lit ? 2.0f : 1.0f, lit ? kAccentHi : kLine);
+            const bool word = row == kOskRows - 1;
+            ui::text(list, fonts_.bold, osk_key_label(row, col), k.cx(), k.cy() + (word ? 8 : 10), word ? 22 : 28,
+                     f ? kWhite : kText, Align::center);
+        }
+    }
 }
 
 void App::apply_search(const std::string &text)
@@ -1990,32 +2258,36 @@ void App::config_change(int row, int delta)
     };
     switch (row)
     {
-    case 0: settings_.intro = !settings_.intro; break;
-    case 1: step(settings_.music); break;
-    case 2: step(settings_.sounds); break;
-    case 3: settings_.ps5_only = !settings_.ps5_only; break;
-    case 4:
+    case 0:
+        settings_.theme = (settings_.theme + (delta < 0 ? kThemeCount - 1 : 1)) % kThemeCount;
+        apply_theme(settings_.theme);
+        break;
+    case 1: settings_.intro = !settings_.intro; break;
+    case 2: step(settings_.music); break;
+    case 3: step(settings_.sounds); break;
+    case 4: settings_.ps5_only = !settings_.ps5_only; break;
+    case 5:
         settings_.show_extreme = !settings_.show_extreme;
         reload_all();
         break;
-    case 5:
+    case 6:
         settings_.web_adult = !settings_.web_adult;
         web_.items.clear();
         ++web_.token;
         break;
-    case 6: settings_.tile_size = (settings_.tile_size + (delta < 0 ? 2 : 1)) % 3; break;
-    case 7: settings_.usb_input = !settings_.usb_input; break;
-    case 8:
+    case 7: settings_.tile_size = (settings_.tile_size + (delta < 0 ? 2 : 1)) % 3; break;
+    case 8: settings_.usb_input = !settings_.usb_input; break;
+    case 9:
         if (delta == 0)
             home_activate(0);
         return;
-    case 9:
+    case 10:
         if (delta != 0)
             return;
         sound(static_cast<int>(audio::Sfx::select));
         backend_.refresh_info([this] { toast("Connected to the Flashpoint service."); });
         return;
-    case 10:
+    case 11:
         if (delta != 0)
             return;
         if (!stop_armed_)
@@ -2034,7 +2306,7 @@ void App::config_change(int row, int delta)
         return;
     default: return;
     }
-    sound(static_cast<int>(row == 1 || row == 2 ? audio::Sfx::move : audio::Sfx::select));
+    sound(static_cast<int>(row == 2 || row == 3 ? audio::Sfx::move : audio::Sfx::select));
     save_settings();
 }
 
@@ -2042,6 +2314,7 @@ void App::config_change(int row, int delta)
 
 void App::draw(gfx::DrawList &list) const
 {
+    list.set_corner_scale(intro_ && intro_fade_ < 0.0f ? 1.0f : g_corners);
     if (intro_ && intro_fade_ < 0.0f)
     {
         draw_intro(list);
@@ -2071,6 +2344,8 @@ void App::draw(gfx::DrawList &list) const
     draw_status(list);
     if (popup_)
         draw_popup(list);
+    if (osk_.open)
+        draw_osk(list);
     draw_toast(list);
     if (intro_)
     {
@@ -2270,7 +2545,7 @@ void App::draw_image(gfx::DrawList &list, const std::string &rel, const Rect &r,
     {
         const float s = std::min(r.w, r.h) * 0.42f;
         list.push_opacity(0.16f);
-        draw_mark(list, r.cx() - s / 2.0f, r.cy() - s / 2.0f, s);
+        draw_mark(list, r.cx() - s / 2.0f, r.cy() - s / 2.0f, s, kMark);
         list.pop_opacity();
         return;
     }
@@ -2288,7 +2563,7 @@ void App::draw_menu(gfx::DrawList &list) const
 {
     list.rounded_rect({0, 0, kW, kMenuH}, 0, kBar);
     list.rounded_rect({0, kMenuH - 1.0f, kW, 1.0f}, 0, kLine);
-    draw_mark(list, 24.0f, 8.0f, 48.0f);
+    draw_mark(list, 24.0f, 8.0f, 48.0f, kMark);
     ui::text(list, fonts_.bold, "FP", 76.0f, 41.0f, 21, kText);
     for (int t = 0; t < kTabCount; ++t)
     {
@@ -2299,7 +2574,7 @@ void App::draw_menu(gfx::DrawList &list) const
             list.rounded_rect({r.x + 4, 10, r.w - 8, kMenuH - 20}, 6, on ? kRowHover : kRow);
         if (on)
             list.rounded_rect({r.x + 14, kMenuH - 6, r.w - 28, 3}, 1.5f, kAccentHi);
-        ui::text(list, fonts_.bold, kTabNames[t], r.cx(), 40.0f, 22, on ? kWhite : kMuted, Align::center);
+        ui::text(list, fonts_.bold, kTabNames[t], r.cx(), 40.0f, 22, on ? kText : kMuted, Align::center);
     }
     const bool lists = browse() || tab_ == kWeb;
     // search
@@ -2474,7 +2749,7 @@ void App::draw_grid(gfx::DrawList &list) const
         const bool on = i == focus;
         const bool hot = pointer_.hover_region == kGrid && pointer_.hover_index == i;
         if (on)
-            list.rounded_rect(r.inset(-6), 8, region_ == kGrid || region_ == kDetail ? kAccent : Color::rgb(0x52305e));
+            list.rounded_rect(r.inset(-6), 8, region_ == kGrid || region_ == kDetail ? kAccent : faded(kAccent, 0.5f));
         else if (hot)
             list.rounded_rect(r.inset(-6), 8, kRowHover);
         const Rect thumb{r.x, r.y, r.w, thumb_h};
@@ -2482,6 +2757,8 @@ void App::draw_grid(gfx::DrawList &list) const
             draw_image(list, t.image, thumb, 6);
         else
             list.rounded_rect(thumb, 6, kTileBox);
+        if (g_link_titles) // pictures in a thin frame, as on a Flash portal
+            list.bordered_rect(thumb, 6, Color::rgb(0, 0.0f), 1.0f, kLine);
         if (!t.platform.empty())
             draw_badge(list, t.platform, r.x + r.w - 14, r.y + thumb_h - 14, 10);
         if (t.installed)
@@ -2495,8 +2772,13 @@ void App::draw_grid(gfx::DrawList &list) const
             float y = r.y + thumb_h + title_size + 8;
             for (const std::string &line : lines.lines)
             {
-                ui::text(list, on ? fonts_.bold : fonts_.regular, line, r.cx(), y, title_size, on ? kWhite : kText,
-                         Align::center);
+                const Color c = on ? kWhite : g_link_titles ? kAccent : kText;
+                ui::text(list, on ? fonts_.bold : fonts_.regular, line, r.cx(), y, title_size, c, Align::center);
+                if (g_link_titles) // titles read as links
+                {
+                    const float lw = (on ? fonts_.bold : fonts_.regular).measure(line, title_size);
+                    list.rounded_rect({r.cx() - lw / 2.0f, y + 3.0f, lw, 1.0f}, 0, c);
+                }
                 y += title_size + 4;
             }
         }
@@ -2529,7 +2811,7 @@ void App::draw_detail(gfx::DrawList &list) const
     }
     float y = a.y + 46;
     const std::string &title = detail_.web ? detail_.item.title : detail_.d.title;
-    y = ui::paragraph(list, fonts_.bold, ui::paragraph_lines(fonts_.bold, title, 30, w, 3), x, y, 30, 36, kWhite);
+    y = ui::paragraph(list, fonts_.bold, ui::paragraph_lines(fonts_.bold, title, 30, w, 3), x, y, 30, 36, kText);
     const float limit = play_button_rect().y - 30;
     const auto field = [&](const char *label, const std::string &value, Color color) {
         if (value.empty() || y > limit - 10)
@@ -2594,7 +2876,7 @@ void App::draw_detail(gfx::DrawList &list) const
     const bool hot = pointer_.visible && inside(p, pointer_.x, pointer_.y);
     if (pf)
         list.shadow(p, 10, 18, Color::rgb(0x000000, 0.5f));
-    list.bordered_rect(p, 8, playable ? (hot ? Color::rgb(0x9131a9) : kAccent) : kRow, pf ? 3.0f : 0.0f, kAccentHi);
+    list.bordered_rect(p, 8, playable ? (hot ? kAccentHover : kAccent) : kRow, pf ? 3.0f : 0.0f, kAccentHi);
     const char *label = detail_.playing ? "Getting ready..." : (detail_.web ? "Play in Ruffle" : "Play");
     list.triangle({p.x + 26, p.cy() - 11, 20, 22}, playable ? kWhite : kDim, 0.0f, 1.5708f);
     ui::text(list, fonts_.bold, label, p.x + 62, p.cy() + 10, 28, playable ? kWhite : kDim);
@@ -2663,7 +2945,10 @@ void App::draw_status(gfx::DrawList &list) const
     }
     // controller hints for where the focus is
     std::vector<std::pair<const char *, std::string>> hints;
-    if (popup_)
+    if (osk_.open)
+        hints = {{"cross", "Type"}, {"square", "Delete"}, {"triangle", "Space"}, {"OPTIONS", "Done"},
+                 {"circle", "Cancel"}};
+    else if (popup_)
         hints = {{"cross", "Choose"}, {"circle", "Close"}};
     else if (backend_.link() != Link::ready)
         hints = {{"cross", "Try again"}};
@@ -2712,10 +2997,9 @@ void App::draw_message(gfx::DrawList &list, const Rect &area, const std::string 
 void App::draw_home(gfx::DrawList &list) const
 {
     list.rounded_rect({0, kMenuH, kW, kH - kMenuH - kStatusH}, 0, kBg);
-    draw_mark(list, 110.0f, 112.0f, 150.0f);
-    ui::text(list, fonts_.bold, "Flashpoint", 280.0f, 196.0f, 64, kWhite);
-    ui::text(list, fonts_.regular, " PS5", 280.0f + fonts_.bold.measure("Flashpoint", 64), 196.0f, 64,
-             Color::rgb(0xb8b2f2));
+    draw_mark(list, 110.0f, 112.0f, 150.0f, kMark);
+    ui::text(list, fonts_.bold, "Flashpoint", 280.0f, 196.0f, 64, kText);
+    ui::text(list, fonts_.regular, " PS5", 280.0f + fonts_.bold.measure("Flashpoint", 64), 196.0f, 64, kAccentHi);
     ui::text(list, fonts_.regular, "Web games and animations from the Flashpoint Archive, on your TV.", 282.0f, 240.0f,
              23, kMuted);
 
@@ -2771,7 +3055,7 @@ void App::draw_home(gfx::DrawList &list) const
         if (i == 0)
         {
             const bool can = !sync_.running && sync_.source != "pc";
-            list.bordered_rect(r, 8, can ? (hot ? Color::rgb(0x9131a9) : kAccent) : kRow, f ? 3.0f : 0.0f, kAccentHi);
+            list.bordered_rect(r, 8, can ? (hot ? kAccentHover : kAccent) : kRow, f ? 3.0f : 0.0f, kAccentHi);
             const char *label = sync_.running ? "Downloading..." : entries > 0 ? "Update library" : "Download library";
             draw_icon(list, kIconDownload, r.x + 22, r.cy(), 22, can ? kWhite : kDim);
             ui::text(list, fonts_.bold, label, r.x + 58, r.cy() + 8, 23, can ? kWhite : kDim);
@@ -2865,17 +3149,18 @@ void App::draw_config(gfx::DrawList &list) const
         float slider = -1.0f;
         switch (r)
         {
-        case 0: toggle = settings_.intro; break;
-        case 1: slider = settings_.music; break;
-        case 2: slider = settings_.sounds; break;
-        case 3: toggle = settings_.ps5_only; break;
-        case 4: toggle = settings_.show_extreme; break;
-        case 5: toggle = settings_.web_adult; break;
-        case 6: value = sizes[std::clamp(settings_.tile_size, 0, 2)]; break;
-        case 7: toggle = settings_.usb_input; break;
-        case 8: value = sync_.running ? "Downloading..." : sync_.source == "pc" ? "From a PC copy" : "Update now"; break;
-        case 9: value = "Reconnect (service " + backend_.info().version + ")"; break;
-        case 10: value = stop_armed_ ? "Press again to stop" : "Stop"; break;
+        case 0: value = kThemes[std::clamp(settings_.theme, 0, kThemeCount - 1)].name; break;
+        case 1: toggle = settings_.intro; break;
+        case 2: slider = settings_.music; break;
+        case 3: slider = settings_.sounds; break;
+        case 4: toggle = settings_.ps5_only; break;
+        case 5: toggle = settings_.show_extreme; break;
+        case 6: toggle = settings_.web_adult; break;
+        case 7: value = sizes[std::clamp(settings_.tile_size, 0, 2)]; break;
+        case 8: toggle = settings_.usb_input; break;
+        case 9: value = sync_.running ? "Downloading..." : sync_.source == "pc" ? "From a PC copy" : "Update now"; break;
+        case 10: value = "Reconnect (service " + backend_.info().version + ")"; break;
+        case 11: value = stop_armed_ ? "Press again to stop" : "Stop"; break;
         default: break;
         }
         const float rx = row.x + row.w - 24;
@@ -2888,16 +3173,17 @@ void App::draw_config(gfx::DrawList &list) const
         else if (slider >= 0.0f)
         {
             const Rect bar{rx - 300, row.cy() - 4, 220, 8};
-            list.rounded_rect(bar, 4, kRow);
+            list.rounded_rect(bar, 4, kLine);
             list.rounded_rect({bar.x, bar.y, bar.w * slider, bar.h}, 4, kAccentHi);
-            list.circle(bar.x + bar.w * slider, bar.cy(), 10, kWhite);
+            list.circle(bar.x + bar.w * slider, bar.cy(), 11, kAccentHi); // a ring, seen on light themes too
+            list.circle(bar.x + bar.w * slider, bar.cy(), 6, kWhite);
             ui::text(list, fonts_.regular, std::to_string(static_cast<int>(std::round(slider * 100))) + "%", rx,
                      row.cy() + 8, 20, kMuted, Align::right);
         }
         else
         {
             const float vw = fonts_.bold.measure(value, 20) + 32;
-            list.bordered_rect({rx - vw, row.cy() - 18, vw, 36}, 6, r == 10 && stop_armed_ ? kRed : kRow, 1.0f, kLine);
+            list.bordered_rect({rx - vw, row.cy() - 18, vw, 36}, 6, r == 11 && stop_armed_ ? kRed : kRow, 1.0f, kLine);
             ui::text(list, fonts_.bold, value, rx - vw / 2, row.cy() + 7, 20, kText, Align::center);
         }
     }
@@ -2906,9 +3192,9 @@ void App::draw_config(gfx::DrawList &list) const
 void App::draw_about(gfx::DrawList &list) const
 {
     list.rounded_rect({0, kMenuH, kW, kH - kMenuH - kStatusH}, 0, kBg);
-    draw_mark(list, 190, 136, 120);
-    ui::text(list, fonts_.bold, "Flashpoint PS5", 340, 200, 48, kWhite);
-    ui::text(list, fonts_.regular, "App 0.0.4 alpha, service " + backend_.info().version, 342, 240, 22, kMuted);
+    draw_mark(list, 190, 136, 120, kMark);
+    ui::text(list, fonts_.bold, "Flashpoint PS5", 340, 200, 48, kText);
+    ui::text(list, fonts_.regular, "App 0.0.5 alpha, service " + backend_.info().version, 342, 240, 22, kMuted);
     const char *const paragraphs[] = {
         "An unofficial PS5 front end for the Flashpoint Archive, the community project that preserves web games and "
         "animations. It is not made or endorsed by Flashpoint Archive.",
@@ -2925,7 +3211,7 @@ void App::draw_about(gfx::DrawList &list) const
     if (!info.lan_ip.empty())
         ui::text(list, fonts_.regular,
                  "On a phone or PC on the same network: http://" + info.lan_ip + ":" + std::to_string(info.ui_port), 342,
-                 276, 21, Color::rgb(0xb8b2f2));
+                 276, 21, kAccentHi);
     float y = 330;
     for (const char *p : paragraphs)
         y = ui::paragraph(list, fonts_.regular, p, 190, y, 23, 1400, 34, kText, 5) + 22;

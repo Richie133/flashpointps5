@@ -1,3 +1,3 @@
 #pragma once
-#define FPPS5_VERSION "0.0.4"
+#define FPPS5_VERSION "0.0.5"
 #define FPPS5_USER_AGENT "FlashpointPS5/" FPPS5_VERSION

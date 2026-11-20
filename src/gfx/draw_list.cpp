@@ -122,7 +122,7 @@ void DrawList::gradient_rect(const Rect &r, float radius, Color top, Color botto
     set4(i.rect, t.x, t.y, t.w, t.h);
     set_color(i.color_top, top);
     set_color(i.color_bottom, bottom);
-    set4(i.params, radius * transform_.scale, 0.0f, 0.0f, static_cast<float>(Shape::rounded_rect));
+    set4(i.params, radius * corner_scale_ * transform_.scale, 0.0f, 0.0f, static_cast<float>(Shape::rounded_rect));
 }
 
 void DrawList::gradient_rect_h(const Rect &r, float radius, Color left, Color right)
@@ -191,7 +191,7 @@ void DrawList::bordered_rect(const Rect &r, float radius, Color fill, float bord
     set_color(i.color_top, fill);
     set_color(i.color_bottom, fill);
     set_color(i.border_color, border_color);
-    set4(i.params, radius * transform_.scale, border * transform_.scale, 0.0f,
+    set4(i.params, radius * corner_scale_ * transform_.scale, border * transform_.scale, 0.0f,
          static_cast<float>(Shape::rounded_rect));
 }
 

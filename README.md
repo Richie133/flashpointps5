@@ -52,7 +52,7 @@ A library copied from a PC still works: put Flashpoint Infinity's
 | Switch pages (Home, Arcade, Theatre, Web, Logs, Config, About) | **L1 / R1** | Click the menu |
 | Move | **D-pad / left stick**; **L2 / R2** jump a screen; right stick scrolls | Pointer; wheel or two fingers scroll; arrow keys, Page Up / Down, Tab |
 | Play the selected entry | **Cross** | Double-click the tile, or click **Play**; Enter |
-| Search | **Triangle** (system keyboard) | Just type |
+| Search | **Triangle**, then **Cross** (the system keyboard, or the app's own if that won't open) | Just type |
 | Sort (title, date added, developer, release date, random) | **Square** | Click the sort menus |
 | Filters (all, plays on PS5, recently played, downloaded, platforms) | Left from the grid, then **Cross** | Click the sidebar |
 | Play any .swf link | **Options** | Web, then "Play a .swf link" |
@@ -79,9 +79,15 @@ them on in Config.
 
 ### Config
 
-Intro on or off, music and interface sound volume, tile size, showing
-extreme or adult entries, USB keyboard and mouse, updating the library, and
-reconnecting or stopping the background service.
+The theme, intro on or off, music and interface sound volume, tile size,
+showing extreme or adult entries, USB keyboard and mouse, updating the
+library, and reconnecting or stopping the background service.
+
+Themes: **Flashpoint** (the launcher's dark look), **Y8** (gray page, white
+boxes and red underlined titles, like the classic Flash portal), **Daylight**,
+**Midnight**, **Ember** and **Terminal**.
+
+![The Y8 theme](docs/media/theme-y8.png)
 
 ## What plays
 

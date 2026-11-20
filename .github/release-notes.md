@@ -1,9 +1,16 @@
-Flashpoint PS5 0.0.4 alpha: a native PS5 app (PPSA72386) for the Flashpoint Archive.
+Flashpoint PS5 0.0.5 alpha: a native PS5 app (PPSA72386) for the Flashpoint Archive.
+
+**Fixed in 0.0.5**
+- Search crashed the app ("Game or App Error", SIGSEGV in eboot.bin). The system keyboard's library isn't loaded when a homebrew app starts, so the app's link to it pointed at nothing. The app now loads that library itself (sysmodule 0x0096) and looks its functions up.
+- If the system keyboard still can't open, the app shows its own on-screen keyboard: D-pad and Cross to type, Square delete, Triangle space, Options done, Circle cancel. The touchpad pointer and a USB keyboard work in it too.
+
+**New in 0.0.5**
+- Themes, in Config: Flashpoint (the launcher's dark look), Y8 (gray page, white boxes and red underlined titles, like the classic Flash portal), Daylight, Midnight, Ember and Terminal.
 
 **Fixed in 0.0.4**
-- 0.0.3 stopped on "The app is incomplete" on every start. Its background service had grown past a 4 MB limit in the app's file reader, so the app couldn't load it even though it was there. The limit is now 64 MB, and the service is built without debug info (1.9 MB instead of 4.9 MB).
+- 0.0.3 stopped on "The app is incomplete" on every start: its background service had grown past a 4 MB limit in the app's file reader. The limit is now 64 MB, and the service is 1.9 MB instead of 4.9 MB.
 
-**Fixed in 0.0.3** (it never got past that screen on a PS5, so these are new too)
+**Fixed in 0.0.3**
 - Search works on every web site. Dagobah uses its own search; PiczoGame and swfchan have none, so their lists are read and matched by title.
 - Each tab keeps its own search. A search typed in Arcade no longer carries into Theatre or Web, where it showed in the box without being applied.
 - Platform counts in the sidebar are for the open library only, and a chosen platform stays chosen when the library updates.
