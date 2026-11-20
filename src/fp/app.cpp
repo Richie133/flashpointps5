@@ -2908,7 +2908,7 @@ void App::draw_about(gfx::DrawList &list) const
     list.rounded_rect({0, kMenuH, kW, kH - kMenuH - kStatusH}, 0, kBg);
     draw_mark(list, 190, 136, 120);
     ui::text(list, fonts_.bold, "Flashpoint PS5", 340, 200, 48, kWhite);
-    ui::text(list, fonts_.regular, "App 0.0.3 alpha, service " + backend_.info().version, 342, 240, 22, kMuted);
+    ui::text(list, fonts_.regular, "App 0.0.4 alpha, service " + backend_.info().version, 342, 240, 22, kMuted);
     const char *const paragraphs[] = {
         "An unofficial PS5 front end for the Flashpoint Archive, the community project that preserves web games and "
         "animations. It is not made or endorsed by Flashpoint Archive.",
@@ -2950,8 +2950,8 @@ void App::draw_link_state(gfx::DrawList &list) const
         break;
     case Link::no_payload:
         draw_message(list, a, "The app is incomplete",
-                     "assets/payload/flashpoint-ps5.elf is missing from the app folder. Copy the whole PPSA72386 "
-                     "folder from the release zip again.");
+                     "assets/payload/flashpoint-ps5.elf couldn't be read from the app folder. Copy the whole "
+                     "PPSA72386 folder from the release zip again.");
         break;
     case Link::failed:
         draw_message(list, a, "The service didn't answer",

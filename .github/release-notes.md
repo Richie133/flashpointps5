@@ -1,6 +1,9 @@
-Flashpoint PS5 0.0.3 alpha: a native PS5 app (PPSA72386) for the Flashpoint Archive.
+Flashpoint PS5 0.0.4 alpha: a native PS5 app (PPSA72386) for the Flashpoint Archive.
 
-**Fixed in 0.0.3**
+**Fixed in 0.0.4**
+- 0.0.3 stopped on "The app is incomplete" on every start. Its background service had grown past a 4 MB limit in the app's file reader, so the app couldn't load it even though it was there. The limit is now 64 MB, and the service is built without debug info (1.9 MB instead of 4.9 MB).
+
+**Fixed in 0.0.3** (it never got past that screen on a PS5, so these are new too)
 - Search works on every web site. Dagobah uses its own search; PiczoGame and swfchan have none, so their lists are read and matched by title.
 - Each tab keeps its own search. A search typed in Arcade no longer carries into Theatre or Web, where it showed in the box without being applied.
 - Platform counts in the sidebar are for the open library only, and a chosen platform stays chosen when the library updates.
@@ -20,7 +23,7 @@ Flashpoint PS5 0.0.3 alpha: a native PS5 app (PPSA72386) for the Flashpoint Arch
 - Touchpad pointer (slide to move, press to click, two fingers to scroll), plus USB mouse and keyboard.
 - A new icon, an intro with original music, and interface sounds.
 
-**Not tested on a real PS5 yet.** Everything runs on a PC against the PC build of the background service, and the web sources were tested against sample pages shaped like those sites. If something goes wrong, the Logs page shows the service's log (`/data/fpps5/fpps5.log`); please open an issue with it.
+**Mostly untested on a real PS5.** The interface has been seen running on a PS5; everything past the start screen was tested on a PC against the PC build of the background service, and the web sources against sample pages shaped like those sites. If something goes wrong, the Logs page shows the service's log (`/data/fpps5/fpps5.log`); please open an issue with it.
 
 **You need**
 - A PS5 that runs homebrew apps, with an ELF loader on port 9021 (etaHEN, or kstuff with elfldr). The app starts its background service through it.

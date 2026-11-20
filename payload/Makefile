@@ -27,8 +27,9 @@ TP_SRCS  := third_party/sqlite/sqlite3.c third_party/miniz/miniz.c \
 GEN_SRC  := $(BUILD)/assets_gen.c
 WWW      := $(shell find www -type f)
 
-CFLAGS   := -O2 -g -Wall -Werror
-TPFLAGS  := -O2 -g -w -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION \
+# no -g: debug info isn't used on the console and only makes the ELF bigger
+CFLAGS   := -O2 -Wall -Werror
+TPFLAGS  := -O2 -w -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION \
             -DSQLITE_DEFAULT_MEMSTATUS=0 -DHAVE_USLEEP=1
 LDADD    := -lSceSystemService -lSceUserService -lSceSsl -lSceHttp -lSceNet -lpthread
 

@@ -184,9 +184,10 @@ void Backend::connect_job()
     if (!up)
     {
         std::string elf;
-        if (!save::read_file(payload_path_, &elf) || elf.size() < 64)
+        // read_file's default cap is 4 MiB; the service is allowed far more
+        if (!save::read_file(payload_path_, &elf, 64u << 20) || elf.size() < 64)
         {
-            sys::log("[FP] service ELF missing: %s", payload_path_.c_str());
+            sys::log("[FP] service ELF unreadable: %s (%zu bytes read)", payload_path_.c_str(), elf.size());
             set_link(Link::no_payload);
             return;
         }
