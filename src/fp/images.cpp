@@ -73,6 +73,8 @@ Texture Images::get(const std::string &rel)
 {
     Entry &entry = entries_[rel];
     entry.used = ++clock_;
+    if (entry.failed && std::chrono::steady_clock::now() >= entry.retry_at)
+        entry.failed = false; // a slow site or a busy moment shouldn't lose the picture for good
     if (entry.texture.id != 0 || entry.loading || entry.failed)
         return entry.texture;
     entry.loading = true;
@@ -83,7 +85,8 @@ Texture Images::get(const std::string &rel)
         Decoded decoded;
         decoded.rel = rel;
         std::string bytes;
-        if (backend_.get_bytes(rel.starts_with("/") ? rel : "/images/" + rel, &bytes))
+        // the service may have to fetch it from the internet first
+        if (backend_.get_bytes(rel.starts_with("/") ? rel : "/images/" + rel, &bytes, 20000))
         {
             int channels = 0;
             unsigned char *pixels = stbi_load_from_memory(
@@ -132,7 +135,12 @@ void Images::pump()
         entry.loading = false;
         if (d.rgba.empty())
         {
+            // try again later, waiting longer each time (4 s, 8 s ... 5 min)
             entry.failed = true;
+            entry.attempts = std::min(entry.attempts + 1, 7);
+            entry.retry_at = std::chrono::steady_clock::now() + std::chrono::seconds(4 << (entry.attempts - 1));
+            if (entry.attempts == 7)
+                entry.retry_at = std::chrono::steady_clock::now() + std::chrono::minutes(5);
             continue;
         }
         if (entry.texture.id != 0)

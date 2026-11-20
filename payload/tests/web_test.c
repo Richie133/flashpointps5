@@ -6,8 +6,10 @@
 #include "../src/web.c"
 
 #include <assert.h>
+#include <utime.h>
 
 /* stand-ins for the network and Ruffle */
+static int offline;
 int net_download(const char *url, const char *dest, net_progress_cb cb, void *ud, char *err,
                  size_t errlen) {
   (void)cb; (void)ud;
@@ -21,6 +23,16 @@ int net_download(const char *url, const char *dest, net_progress_cb cb, void *ud
   else if (!strcmp(url, "https://eye.swfchan.com/flash.asp?id=269093&n=18.swf"))
     body = "<object><param name=movie value=\"//eye.swfchan.com/flash/269093/18.swf\"></object>";
   else if (!strcmp(url, "https://eye.swfchan.com/flash/269093/18.swf")) body = "FWS\x09....";
+  else if (!strcmp(url, "https://piczogame.net/content/games.html"))
+    body = "<a href=\"https://piczogame.net/play/a.html\">Ninja Run</a>"
+           "<a href=\"https://piczogame.net/content/games-page2.html\">2</a>";
+  else if (!strcmp(url, "https://piczogame.net/content/games-page2.html"))
+    body = "<a href=\"https://piczogame.net/play/b.html\">Space Ninja</a>"
+           "<a href=\"https://piczogame.net/play/c.html\">Tetris</a>"
+           "<a href=\"https://piczogame.net/content/games-page3.html\">3</a>";
+  else if (!strcmp(url, "https://piczogame.net/content/games-page3.html"))
+    body = "<a href=\"https://piczogame.net/play/d.html\">Ninja 3</a>";
+  if (offline && strstr(url, "/content/")) body = NULL;
   if (!body) { snprintf(err, errlen, "404 %s", url); return -1; }
   mkdirs_for_file(dest);
   return write_text_file(dest, body);
@@ -101,6 +113,29 @@ int main(void) {
   budget = 6;
   err[0] = 0;
   assert(resolve_swf("https://piczogame.net/play/missing.html", dest, 0, &budget, err, sizeof err));
+  /* PiczoGame has no search page: its list pages are read and matched */
+  char *json = web_list_json("piczogame", "games", "ninja", 1, 0);
+  assert(strstr(json, "Ninja Run") && strstr(json, "Space Ninja") && strstr(json, "Ninja 3"));
+  assert(!strstr(json, "Tetris") && strstr(json, "\"more\":false") && strstr(json, "\"next\":4"));
+  free(json);
+  json = web_list_json("piczogame", "games", "", 1, 0);
+  assert(strstr(json, "Ninja Run") && !strstr(json, "Space Ninja") && strstr(json, "\"more\":true"));
+  assert(strstr(json, "\"next\":2"));
+  free(json);
+  /* a site that stops answering still lists from the older copy */
+  offline = 1;
+  char cached[1100], key[17];
+  hash_hex("https://piczogame.net/content/games.html", key);
+  snprintf(cached, sizeof cached, "%s/web/%s.html", g_cfg.cache_path, key);
+  struct utimbuf old = {time(NULL) - 3600, time(NULL) - 3600};
+  assert(!utime(cached, &old));
+  json = web_list_json("piczogame", "games", "", 1, 0);
+  assert(strstr(json, "Ninja Run"));
+  free(json);
+  json = web_list_json("piczogame", "animations", "", 1, 0);
+  assert(strstr(json, "didn't answer"));
+  free(json);
+  offline = 0;
   printf("web tests passed\n");
   return 0;
 }

@@ -67,7 +67,8 @@ work too (Config can turn them off).
 The Web page lists Flash from **Dagobah** (newest, most liked, games, music
 videos, loops), **PiczoGame** (games, animations, Flash loops) and **swfchan**
 (its clean games, stories and music-loop categories), read from those sites'
-own pages when you open them. Search works on Dagobah and PiczoGame. Choosing
+own pages when you open them. Search works on all three: Dagobah has its own,
+and PiczoGame and swfchan lists are matched by title as they load. Choosing
 **Play in Ruffle** finds the `.swf` on the entry's page, downloads it and opens
 it in Ruffle Flash. Entries a site marks as adult are hidden unless you turn
 them on in Config.

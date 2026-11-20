@@ -17,6 +17,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -135,6 +136,7 @@ struct Stats
     bool ok = false;
     long long arcade = 0, theatre = 0;
     std::vector<std::pair<std::string, long long>> platforms; // most entries first
+    std::map<std::string, std::vector<std::pair<std::string, long long>>> library_platforms; // the same, per library
 };
 
 struct SyncStatus
@@ -172,6 +174,7 @@ struct WebPage
     bool ok = false;
     std::vector<WebItem> items;
     bool more = false;
+    int next = 0; // the page to ask for next (searches may read several at once)
     int hidden = 0;
     std::string error;
 };

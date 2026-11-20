@@ -388,6 +388,11 @@ void Backend::stats(std::function<void(Stats)> done)
                 if (!str(row, "name").empty())
                     s.platforms.emplace_back(str(row, "name"), num(row, "count"));
             }
+            for (const JsonValue &row : root["libraryPlatformTotals"].items())
+            {
+                if (!str(row, "name").empty())
+                    s.library_platforms[str(row, "library")].emplace_back(str(row, "name"), num(row, "count"));
+            }
         }
         post([done, s] { done(s); });
     });
@@ -452,6 +457,7 @@ void Backend::web_list(const std::string &source, const std::string &list, const
             p.ok = !root["error"].is_string();
             p.error = str(root, "error");
             p.more = flag(root, "more");
+            p.next = static_cast<int>(num(root, "next"));
             p.hidden = static_cast<int>(num(root, "hidden"));
             for (const JsonValue &i : root["items"].items())
                 p.items.push_back(WebItem{str(i, "title"), str(i, "page"), str(i, "swf"), str(i, "thumb"),

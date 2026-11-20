@@ -15,7 +15,7 @@
   "conceptId": "72386",
   "contentBadgeType": 1,
   "contentId": "UP9000-PPSA72386_00-FLASHPOINTPS5000",
-  "contentVersion": "01.000.002",
+  "contentVersion": "01.000.003",
   "downloadDataSize": 256,
   "gameIntent": {
     "permittedIntents": [
@@ -36,7 +36,7 @@
   },
   "masterVersion": "01.00",
   "pubtools": {
-    "creationDate": "2026-11-17 00:00:00",
+    "creationDate": "2026-11-20 00:00:00",
     "loudnessSnd0": "-28.00",
     "toolVersion": "2.00"
   },

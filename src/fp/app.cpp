@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <ctime>
 
@@ -410,6 +411,12 @@ const App::Browse *App::browse() const
     return tab_ == kArcade ? &browse_[0] : tab_ == kTheatre ? &browse_[1] : nullptr;
 }
 
+const std::vector<std::pair<std::string, long long>> &App::platforms_for(const Browse &b) const
+{
+    const auto it = stats_.library_platforms.find(b.library);
+    return it != stats_.library_platforms.end() ? it->second : stats_.platforms;
+}
+
 std::vector<App::SideRow> App::sidebar_rows() const
 {
     std::vector<SideRow> rows;
@@ -422,12 +429,16 @@ std::vector<App::SideRow> App::sidebar_rows() const
         rows.push_back({"Downloaded", "", 3});
         rows.push_back({"Platforms", "", 5});
         int shown = 0;
-        for (const auto &[name, count] : stats_.platforms)
+        bool chosen = b->platform.empty();
+        for (const auto &[name, count] : platforms_for(*b))
         {
             if (shown++ >= 12)
                 break;
             rows.push_back({name, name, 4, count});
+            chosen |= name == b->platform;
         }
+        if (!chosen) // keep the chosen one listed even after it drops out of the top
+            rows.push_back({b->platform, b->platform, 4, -1});
     }
     else if (tab_ == kWeb)
     {
@@ -457,7 +468,13 @@ int App::sidebar_focus() const
 void App::set_sidebar_focus(int row)
 {
     if (Browse *b = browse())
+    {
+        const auto rows = sidebar_rows();
+        const bool platform = row >= 0 && row < static_cast<int>(rows.size()) &&
+                              rows[static_cast<std::size_t>(row)].kind == 4;
+        b->platform = platform ? rows[static_cast<std::size_t>(row)].platform : std::string();
         b->filter = row;
+    }
     else if (tab_ == kWeb)
         web_.filter = row;
 }
@@ -479,8 +496,8 @@ SearchQuery App::query_for(const Browse &b) const
         q.played = true;
     else if (b.filter == 3)
         q.installed = true;
-    else if (b.filter >= 5 && b.filter - 5 < static_cast<int>(stats_.platforms.size()))
-        q.platform = stats_.platforms[static_cast<std::size_t>(b.filter - 5)].first;
+    else if (b.filter >= 5)
+        q.platform = b.platform;
     return q;
 }
 
@@ -495,6 +512,16 @@ void App::reload_browse(Browse &b)
     b.scroll = b.scroll_to = 0.0f;
     images_.cancel_pending();
     ensure_pages(b);
+}
+
+void App::refresh_browse(Browse &b)
+{
+    b.pages.clear();
+    b.loading.clear();
+    b.failed = false;
+    ++b.token;
+    if (&b == browse())
+        ensure_pages(b);
 }
 
 void App::reload_all()
@@ -542,8 +569,12 @@ void App::ensure_pages(Browse &b)
             }
             target->failed = false;
             target->total = result.total;
+            if (target->focus >= target->total) // entries went away in an update
+                target->focus = static_cast<int>(std::max<long long>(0, target->total - 1));
             target->pages[page] = std::move(result.games);
-            if (browse() == target && page == 0 && !detail_.web && detail_.id.empty())
+            // the detail panel follows the focus once its page is here (after a
+            // jump the focused entry may not have been loaded yet)
+            if (browse() == target && page == target->focus / kPageSize)
                 select_for_detail();
         });
     }
@@ -563,6 +594,7 @@ void App::load_web(bool next_page)
         web_.page = 0;
         web_.focus = 0;
         web_.hidden = 0;
+        web_.empty_run = 0;
         web_.scroll = web_.scroll_to = 0.0f;
         web_.error.clear();
         ++web_.token;
@@ -572,18 +604,18 @@ void App::load_web(bool next_page)
     web_.loading = true;
     const int page = web_.page + 1;
     const std::uint64_t token = web_.token;
-    bool searchable = false;
-    for (const WebSource &s : web_.sources)
-        searchable |= s.id == row.source && s.search;
-    backend_.web_list(row.source, row.list, searchable ? search_ : std::string(), page, settings_.web_adult,
+    // every source can be searched: the service asks the site, or reads
+    // its lists and keeps the titles that match
+    backend_.web_list(row.source, row.list, search_, page, settings_.web_adult,
                       [this, token, page](WebPage p) {
                           if (token != web_.token)
                               return;
                           web_.loading = false;
                           web_.error = p.error;
-                          web_.page = page;
-                          web_.more = p.more && !p.items.empty();
+                          web_.page = p.next > page ? p.next - 1 : page;
+                          web_.more = p.more;
                           web_.hidden += p.hidden;
+                          const std::size_t before = web_.items.size();
                           for (WebItem &i : p.items)
                           {
                               const bool seen = std::any_of(web_.items.begin(), web_.items.end(),
@@ -591,11 +623,20 @@ void App::load_web(bool next_page)
                               if (!seen)
                                   web_.items.push_back(std::move(i));
                           }
-                          if (tab_ == kWeb && page == 1 && !web_.items.empty())
+                          // pages that added nothing (all hidden, or no match) don't end
+                          // the list, but a run of them does
+                          web_.empty_run = web_.items.size() == before ? web_.empty_run + 1 : 0;
+                          if (web_.empty_run >= 4)
+                              web_.more = false;
+                          if (tab_ == kWeb && before == 0 && !web_.items.empty())
                           {
                               detail_.web = false;
                               select_for_detail();
                           }
+                          // fill at least a few rows without waiting for the cursor
+                          if (web_.more && web_.error.empty() && web_.page < 48 &&
+                              static_cast<int>(web_.items.size()) < grid_cols() * 3)
+                              load_web(true);
                       });
 }
 
@@ -623,6 +664,8 @@ void App::set_grid_focus(int index, bool with_sound)
     index = std::clamp(index, 0, count - 1);
     if (index == grid_focus())
         return;
+    if (std::abs(index - grid_focus()) > grid_cols() * 6)
+        images_.cancel_pending(); // a long jump: skip the pictures of the rows passed over
     if (tab_ == kWeb)
         web_.focus = index;
     else if (Browse *b = browse())
@@ -738,8 +781,23 @@ void App::load_detail()
 void App::refresh_stats()
 {
     backend_.stats([this](Stats s) {
-        if (s.ok)
-            stats_ = std::move(s);
+        if (!s.ok)
+            return;
+        stats_ = std::move(s);
+        // a platform filter follows its platform to its new row
+        for (Browse &b : browse_)
+        {
+            if (b.platform.empty())
+                continue;
+            int row = 5;
+            for (const auto &[name, count] : platforms_for(b))
+            {
+                if (row - 5 >= 12 || name == b.platform)
+                    break;
+                ++row;
+            }
+            b.filter = row;
+        }
     });
     SearchQuery q;
     q.played = true;
@@ -939,14 +997,27 @@ void App::poll_sync(float dt)
         const bool first = had <= 0 && s.entries > 0;
         const bool finished = was_running && !s.running;
         sync_ = s;
-        if (first || finished || (s.running && s.entries - had >= 5000))
+        if (first || finished || (s.running && s.entries - stats_entries_ >= 20000))
         {
+            stats_entries_ = s.entries;
             backend_.refresh_info([] {});
             refresh_stats();
-            if (Browse *b = browse())
+            for (Browse &b : browse_)
             {
-                if (b->total <= 0 || finished)
-                    reload_browse(*b);
+                if (b.total <= 0)
+                {
+                    if (&b == browse())
+                        reload_browse(b);
+                    else
+                    {
+                        b.total = -1; // loads from the top when opened
+                        b.pages.clear();
+                        b.loading.clear();
+                        ++b.token;
+                    }
+                }
+                else if (finished)
+                    refresh_browse(b); // new entries in, without losing the place
             }
         }
         if (finished && s.state == "done")
@@ -988,8 +1059,16 @@ void App::handle_pointer(const PadSample &pad, const hid::Frame &hid, float dt)
         pointer_.two = false;
     }
     const bool touch_down = (pad.buttons & pad_bits::kTouchpad) != 0;
+    bool reveal = false;
     if (touch_down && !touch_was_down_)
-        clicked = true;
+    {
+        // a press while the pointer is hidden only brings it back: the user
+        // can't see where it would click
+        if (pointer_.visible)
+            clicked = true;
+        else
+            reveal = true;
+    }
     touch_was_down_ = touch_down;
 
     dx += static_cast<float>(hid.dx);
@@ -998,7 +1077,7 @@ void App::handle_pointer(const PadSample &pad, const hid::Frame &hid, float dt)
     if (hid.clicked & hid::kMouseLeft)
         clicked = true;
 
-    if (dx != 0.0f || dy != 0.0f || wheel != 0.0f || clicked)
+    if (dx != 0.0f || dy != 0.0f || wheel != 0.0f || clicked || reveal)
     {
         pointer_.visible = true;
         pointer_.idle = 0.0f;
@@ -1104,7 +1183,7 @@ void App::handle_keyboard(const hid::Frame &hid, InputFrame &input)
         }
         if (!typed.empty() && (region_ == kSearch || typed != " "))
         {
-            if (tab_ == kHome)
+            if (!browse() && tab_ != kWeb)
                 switch_tab(kArcade);
             if (region_ != kSearch)
                 move_focus(kSearch);
@@ -1204,7 +1283,7 @@ void App::click(float x, float y, bool twice)
                 open_keyboard(1);
             return;
         }
-        if ((browse() || tab_ == kWeb) && (inside(sort_rect(), x, y) || inside(dir_rect(), x, y)))
+        if (browse() && (inside(sort_rect(), x, y) || inside(dir_rect(), x, y)))
         {
             popup_ = true;
             popup_focus_ = 0;
@@ -1322,7 +1401,12 @@ void App::switch_tab(int tab)
     tab = std::clamp(tab, 0, kTabCount - 1);
     if (tab == tab_)
         return;
+    if (search_wait_ >= 0.0f) // typed but not applied yet: this tab's list follows it first
+        apply_search(search_);
+    tab_search_[static_cast<std::size_t>(tab_)] = search_;
     tab_ = tab;
+    search_ = tab_search_[static_cast<std::size_t>(tab_)];
+    images_.cancel_pending(); // the new page's pictures first, not the old page's queue
     popup_ = false;
     stop_armed_ = false;
     pointer_.hover_region = -1;
@@ -1334,7 +1418,12 @@ void App::switch_tab(int tab)
     {
         region_ = kGrid;
         if (b->pages.empty() && b->loading.empty())
-            reload_browse(*b);
+        {
+            if (b->total < 0)
+                reload_browse(*b);
+            else
+                ensure_pages(*b); // refreshed while away: same place, new data
+        }
         else
             select_for_detail();
     }
@@ -1548,7 +1637,7 @@ void App::update_main(const InputFrame &input, float dt)
             open_keyboard(1);
         return;
     }
-    if (lists && input.is_pressed(Action::west))
+    if (browse() && input.is_pressed(Action::west))
     {
         popup_ = true;
         popup_focus_ = 0;
@@ -2230,11 +2319,12 @@ void App::draw_menu(gfx::DrawList &list) const
             list.rounded_rect({s.x + 46 + w, s.y + 9, 2, s.h - 18}, 1, kText);
     }
     // sorting
+    const bool sortable = browse() != nullptr; // web lists come in the site's own order
     const auto dropdown = [&](const Rect &r, const std::string &label) {
-        const bool hot = lists && pointer_.visible && inside(r, pointer_.x, pointer_.y);
+        const bool hot = sortable && pointer_.visible && inside(r, pointer_.x, pointer_.y);
         list.bordered_rect(r, 6, hot ? kRowHover : kRow, 1.0f, kLine);
-        ui::text(list, fonts_.regular, label, r.x + 14, r.cy() + 7, 19, lists ? kText : kDim);
-        list.triangle({r.x + r.w - 26, r.cy() - 4, 12, 8}, lists ? kMuted : kDim, 0.0f, 3.14159f);
+        ui::text(list, fonts_.regular, label, r.x + 14, r.cy() + 7, 19, sortable ? kText : kDim);
+        list.triangle({r.x + r.w - 26, r.cy() - 4, 12, 8}, sortable ? kMuted : kDim, 0.0f, 3.14159f);
     };
     std::string sort_name = "Title";
     for (const SortOption &o : kSorts)
@@ -2325,10 +2415,10 @@ void App::draw_grid(gfx::DrawList &list) const
                              "Pick a site and a list on the left, or choose \"Play a .swf link\" to open any Flash "
                              "file in Ruffle.");
             else
-                draw_message(list, a, "Nothing here",
-                             web_.hidden ? "Everything on this page is marked as adult, which is hidden. Config "
-                                           "changes that."
-                                         : "Try another list, or fewer search words.");
+                draw_message(list, a, search_.empty() ? "Nothing here" : "No matches",
+                             web_.hidden ? "What's here is marked as adult, which is hidden. Config changes that."
+                             : search_.empty() ? "Try another list."
+                                               : "Try fewer words, or another list.");
             return;
         }
     }
@@ -2581,7 +2671,8 @@ void App::draw_status(gfx::DrawList &list) const
     {
         hints.push_back({"cross", region_ == kGrid || region_ == kDetail ? "Play" : "Open"});
         hints.push_back({"triangle", "Search"});
-        hints.push_back({"square", "Sort"});
+        if (browse())
+            hints.push_back({"square", "Sort"});
         hints.push_back({"OPTIONS", ".swf link"});
     }
     else if (tab_ == kConfig)
@@ -2817,7 +2908,7 @@ void App::draw_about(gfx::DrawList &list) const
     list.rounded_rect({0, kMenuH, kW, kH - kMenuH - kStatusH}, 0, kBg);
     draw_mark(list, 190, 136, 120);
     ui::text(list, fonts_.bold, "Flashpoint PS5", 340, 200, 48, kWhite);
-    ui::text(list, fonts_.regular, "App 0.0.2 alpha, service " + backend_.info().version, 342, 240, 22, kMuted);
+    ui::text(list, fonts_.regular, "App 0.0.3 alpha, service " + backend_.info().version, 342, 240, 22, kMuted);
     const char *const paragraphs[] = {
         "An unofficial PS5 front end for the Flashpoint Archive, the community project that preserves web games and "
         "animations. It is not made or endorsed by Flashpoint Archive.",

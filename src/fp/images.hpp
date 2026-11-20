@@ -8,6 +8,7 @@
 #include "fp/worker.hpp"
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -52,6 +53,8 @@ class Images
         Texture texture;
         bool loading = false;
         bool failed = false;
+        int attempts = 0;                              // failures so far
+        std::chrono::steady_clock::time_point retry_at; // when a failed one is asked again
         std::uint64_t used = 0;
     };
 

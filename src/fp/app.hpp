@@ -15,6 +15,7 @@
 #include "ui/fonts.hpp"
 
 #include <cstdint>
+#include <array>
 #include <map>
 #include <set>
 #include <string>
@@ -82,6 +83,7 @@ class App
     {
         std::string library;
         int filter = 1;
+        std::string platform; // the platform row's name (rows move when counts change)
         long long total = -1;
         std::map<int, std::vector<Game>> pages;
         std::set<int> loading;
@@ -102,6 +104,7 @@ class App
         bool more = false, loading = false;
         std::string error;
         int hidden = 0;
+        int empty_run = 0; // pages in a row that added nothing
         std::uint64_t token = 0;
         int focus = 0;
         float scroll = 0.0f, scroll_to = 0.0f;
@@ -153,12 +156,14 @@ class App
 
     // data
     std::vector<SideRow> sidebar_rows() const;
+    const std::vector<std::pair<std::string, long long>> &platforms_for(const Browse &b) const;
     int sidebar_focus() const;
     void set_sidebar_focus(int row);
     Browse *browse();
     const Browse *browse() const;
     SearchQuery query_for(const Browse &b) const;
     void reload_browse(Browse &b);
+    void refresh_browse(Browse &b); // new data, same focus and scroll
     void reload_all();
     void ensure_pages(Browse &b);
     void load_web(bool next_page);
@@ -246,7 +251,8 @@ class App
     Browse browse_[2];
     WebState web_;
     Detail detail_;
-    std::string search_;
+    std::string search_;                            // the open tab's search box
+    std::array<std::string, kTabCount> tab_search_; // each tab keeps its own
     float search_wait_ = -1.0f;
     int home_focus_ = 0;
     int config_focus_ = 0;
@@ -275,6 +281,7 @@ class App
     Stats stats_;
     SyncStatus sync_;
     float sync_poll_ = 0.0f;
+    long long stats_entries_ = 0; // library size at the last stats refresh
     bool sync_started_ = false;
     std::vector<Game> recent_;
     std::vector<Job> jobs_;

@@ -576,6 +576,27 @@ char *lib_stats_json(void) {
     stats_query(&out, "platformTotals",
                 "SELECT platformName, COUNT(*) FROM game GROUP BY platformName ORDER BY 2 DESC");
   }
+  /* per library, for the sidebars (each counts only its own entries) */
+  sb_append(&out, ",\"libraryPlatformTotals\":[");
+  {
+    sqlite3_stmt *st;
+    if (sqlite3_prepare_v2(g_db,
+                           "SELECT library, platformName, COUNT(*) FROM game"
+                           " WHERE platformName IS NOT NULL AND platformName != ''"
+                           " GROUP BY library, platformName ORDER BY 3 DESC",
+                           -1, &st, NULL) == SQLITE_OK) {
+      int n = 0;
+      while (sqlite3_step(st) == SQLITE_ROW) {
+        sb_append(&out, n++ ? ",{\"library\":" : "{\"library\":");
+        sb_json_str(&out, (const char *)sqlite3_column_text(st, 0));
+        sb_append(&out, ",\"name\":");
+        sb_json_str(&out, (const char *)sqlite3_column_text(st, 1));
+        sb_printf(&out, ",\"count\":%lld}", (long long)sqlite3_column_int64(st, 2));
+      }
+      sqlite3_finalize(st);
+    }
+  }
+  sb_append(&out, "]");
   sb_printf(&out, ",\"installedTotal\":%lld",
             has_column("game", "activeDataOnDisk")
               ? scalar("SELECT COUNT(*) FROM game WHERE activeDataOnDisk = 1")

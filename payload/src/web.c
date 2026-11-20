@@ -160,18 +160,33 @@ static void url_encode_q(sb_t *sb, const char *s, int plus_spaces) {
 }
 
 /* Downloads a page (cached for ten minutes); caller frees. */
+/* Download to a name of our own, then move it into place, so two
+ * requests for the same URL never write one file at once. */
+static int download_atomic(const char *url, const char *path, char *err, size_t errlen) {
+  static unsigned counter;
+  char tmp[FP_PATH_MAX];
+  snprintf(tmp, sizeof tmp, "%s.%u.tmp", path, __sync_fetch_and_add(&counter, 1));
+  mkdirs_for_file(path);
+  if (net_download(url, tmp, NULL, NULL, err, errlen)) {
+    unlink(tmp);
+    return -1;
+  }
+  if (rename(tmp, path)) {
+    snprintf(err, errlen, "can't store %s", path);
+    unlink(tmp);
+    return -1;
+  }
+  return 0;
+}
+
 static char *fetch_page(const char *url, size_t *len) {
   char key[17], path[FP_PATH_MAX], name[40], err[256];
   hash_hex(url, key);
   snprintf(name, sizeof name, "web/%s.html", key);
   path_join(path, sizeof path, g_cfg.cache_path, name);
-  if (!file_age_ok(path, 600)) {
-    mkdirs_for_file(path);
-    unlink(path);
-    if (net_download(url, path, NULL, NULL, err, sizeof err)) {
-      LOG("web: %s: %s", url, err);
-      return NULL;
-    }
+  if (!file_age_ok(path, 600) && download_atomic(url, path, err, sizeof err)) {
+    LOG("web: %s: %s", url, err);
+    if (!is_file(path)) return NULL; /* an older copy is better than nothing */
   }
   return read_text_file(path, len);
 }
@@ -252,7 +267,7 @@ static const list_def_t k_swfchan_lists[] = {
 
 static const site_def_t k_sites[] = {
   {"dagobah", "Dagobah", "https://dagobah.net/", k_dagobah_lists, 1},
-  {"piczogame", "PiczoGame", "https://piczogame.net/", k_piczo_lists, 1},
+  {"piczogame", "PiczoGame", "https://piczogame.net/", k_piczo_lists, 0},
   {"swfchan", "swfchan", "https://swfchan.com/", k_swfchan_lists, 0},
   {NULL, NULL, NULL, NULL, 0}};
 
@@ -314,18 +329,12 @@ static int list_url(const char *site, const char *list, const char *q, int page,
     }
     sb_printf(&sb, "page=%d", page);
   } else if (!strcmp(site, "piczogame")) {
-    if (q && q[0]) {
-      sb_append(&sb, "https://piczogame.net/search.php?q=");
-      url_encode_q(&sb, q, 1);
-      sb_printf(&sb, "&page=%d", page);
-    } else {
-      const char *cat = list && list[0] ? list : "games";
-      if (strcmp(cat, "games") && strcmp(cat, "animations") && strcmp(cat, "flash-loops") &&
-          strcmp(cat, "all"))
-        cat = "games";
-      if (page <= 1) sb_printf(&sb, "https://piczogame.net/content/%s.html", cat);
-      else sb_printf(&sb, "https://piczogame.net/content/%s-page%d.html", cat, page);
-    }
+    const char *cat = list && list[0] ? list : "games";
+    if (strcmp(cat, "games") && strcmp(cat, "animations") && strcmp(cat, "flash-loops") &&
+        strcmp(cat, "all"))
+      cat = "games";
+    if (page <= 1) sb_printf(&sb, "https://piczogame.net/content/%s.html", cat);
+    else sb_printf(&sb, "https://piczogame.net/content/%s-page%d.html", cat, page);
   } else if (!strcmp(site, "swfchan")) {
     const char *file = !strcmp(list, "stories") ? "categories-storycleannogames.shtml"
                        : !strcmp(list, "loops") ? "categories-loopmusic.shtml"
@@ -531,16 +540,71 @@ static void parse_swfchan(const char *page_url, const char *html, items_t *out) 
   }
 }
 
+/* Every word of the query appears in the title. */
+static int title_matches(const char *title, const char *q) {
+  char words[256];
+  str_lcpy(words, q, sizeof words);
+  for (char *save = NULL, *w = strtok_r(words, " \t", &save); w; w = strtok_r(NULL, " \t", &save)) {
+    if (!str_contains_ci(title, w)) return 0;
+  }
+  return 1;
+}
+
+/* One listing page: its items, and whether a next page exists. 0, or -1
+ * when the site didn't answer. */
+static int list_page(const site_def_t *def, const char *list, const char *q, int page,
+                     items_t *items, int *more) {
+  char url[1024];
+  *more = 0;
+  if (list_url(def->id, list, q, page, url, sizeof url)) return 0; /* past the end */
+  size_t len = 0;
+  char *html = fetch_page(url, &len);
+  if (!html) return -1;
+  if (!strcmp(def->id, "dagobah")) parse_dagobah(url, html, items);
+  else if (!strcmp(def->id, "piczogame")) parse_piczogame(url, html, items);
+  else parse_swfchan(url, html, items);
+  char next[64];
+  if (!strcmp(def->id, "piczogame")) snprintf(next, sizeof next, "-page%d.html", page + 1);
+  else snprintf(next, sizeof next, "page=%d", page + 1);
+  if (strcmp(def->id, "swfchan")) *more = strstr(html, next) != NULL;
+  free(html);
+  return 0;
+}
+
+/* Sites with a search page are asked; the others are searched by reading
+ * a few listing pages and keeping the titles that match, so "next" may
+ * be several pages on. */
 char *web_list_json(const char *site, const char *list, const char *q, int page, int adult) {
   const site_def_t *def = find_site(site ? site : "");
   if (!def) return str_dup("{\"error\":\"unknown source\",\"items\":[]}");
   if (page < 1) page = 1;
-  char url[1024];
-  if (list_url(def->id, list ? list : "", q, page, url, sizeof url))
-    return str_dup("{\"items\":[],\"more\":false}");
-  size_t len = 0;
-  char *html = fetch_page(url, &len);
-  if (!html) {
+  if (!list) list = "";
+  const int searching = q && q[0];
+  const int local = searching && !def->searchable;
+
+  items_t items = {0};
+  int more = 0, pg = page, failed = 0;
+  for (int scanned = 0; scanned < (local ? 8 : 1); scanned++, pg++) {
+    items_t got = {0};
+    if (list_page(def, list, local ? NULL : q, pg, &got, &more)) {
+      failed = scanned == 0;
+      more = 0;
+      free(got.items);
+      break;
+    }
+    for (int i = 0; i < got.n; i++) {
+      if (local && !title_matches(got.items[i].title, q)) continue;
+      if (items_has(&items, got.items[i].page)) continue;
+      *items_add(&items) = got.items[i];
+    }
+    free(got.items);
+    if (!more || items.n >= 24) {
+      pg++;
+      break;
+    }
+  }
+  if (failed) {
+    free(items.items);
     sb_t sb;
     sb_init(&sb);
     sb_append(&sb, "{\"items\":[],\"more\":false,\"error\":");
@@ -550,17 +614,6 @@ char *web_list_json(const char *site, const char *list, const char *q, int page,
     sb_append(&sb, "}");
     return sb_steal(&sb);
   }
-  items_t items = {0};
-  if (!strcmp(def->id, "dagobah")) parse_dagobah(url, html, &items);
-  else if (!strcmp(def->id, "piczogame")) parse_piczogame(url, html, &items);
-  else parse_swfchan(url, html, &items);
-
-  char next[64];
-  int more = 0;
-  if (!strcmp(def->id, "piczogame") && !(q && q[0])) snprintf(next, sizeof next, "-page%d.html", page + 1);
-  else snprintf(next, sizeof next, "page=%d", page + 1);
-  if (strcmp(def->id, "swfchan")) more = strstr(html, next) != NULL;
-  free(html);
 
   sb_t sb;
   sb_init(&sb);
@@ -583,7 +636,8 @@ char *web_list_json(const char *site, const char *list, const char *q, int page,
     sb_json_str(&sb, w->thumb);
     sb_printf(&sb, ",\"adult\":%s}", w->adult ? "true" : "false");
   }
-  sb_printf(&sb, "],\"more\":%s,\"hidden\":%d,\"source\":", more ? "true" : "false", hidden);
+  sb_printf(&sb, "],\"more\":%s,\"next\":%d,\"hidden\":%d,\"source\":", more ? "true" : "false",
+            pg, hidden);
   sb_json_str(&sb, def->name);
   sb_append(&sb, "}");
   free(items.items);
@@ -597,8 +651,17 @@ int web_thumb_path(const char *url, char *out, size_t size) {
   snprintf(name, sizeof name, "thumbs/%s.img", key);
   path_join(out, size, g_cfg.cache_path, name);
   if (is_file(out)) return 0;
-  mkdirs_for_file(out);
-  return net_download(url, out, NULL, NULL, err, sizeof err) ? -1 : 0;
+  char miss[FP_PATH_MAX];
+  snprintf(miss, sizeof miss, "%s.miss", out);
+  struct stat st;
+  if (!stat(miss, &st) && time(NULL) - st.st_mtime < 600) return -1; /* failed lately */
+  if (download_atomic(url, out, err, sizeof err)) {
+    LOG("web: picture %s: %s", url, err);
+    FILE *f = fopen(miss, "w");
+    if (f) fclose(f);
+    return -1;
+  }
+  return 0;
 }
 
 /* ---------------------------------------------------- finding the .swf */

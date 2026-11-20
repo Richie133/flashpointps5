@@ -1,14 +1,26 @@
-Flashpoint PS5 0.0.2 alpha: a native PS5 app (PPSA72386) for the Flashpoint Archive.
+Flashpoint PS5 0.0.3 alpha: a native PS5 app (PPSA72386) for the Flashpoint Archive.
 
-**New in 0.0.2**
+**Fixed in 0.0.3**
+- Search works on every web site. Dagobah uses its own search; PiczoGame and swfchan have none, so their lists are read and matched by title.
+- Each tab keeps its own search. A search typed in Arcade no longer carries into Theatre or Web, where it showed in the box without being applied.
+- Platform counts in the sidebar are for the open library only, and a chosen platform stays chosen when the library updates.
+- After a page jump (L2/R2) the details panel shows the entry under the cursor instead of the previous one.
+- When a library update finishes you stay where you were in the list instead of jumping back to the top.
+- Pictures that fail to load (a slow site, a busy moment) are tried again, and switching tabs loads the new page's pictures first.
+- Web lists keep loading past pages where every entry was hidden or nothing matched the search.
+- Web pages and pictures are saved safely when several requests come in at once, and a saved copy is shown if a site stops answering.
+- Pressing the touchpad while the pointer is hidden brings the pointer back instead of clicking a spot you can't see.
+- Sorting is offered only in Arcade and Theatre (web lists come in each site's own order).
+- Typing on a USB keyboard from any page searches the Arcade.
+
+**Also in this build** (from 0.0.2, which wasn't released on its own)
 - An interface laid out like the Flashpoint Launcher: Home, Arcade, Theatre, Web, Logs, Config and About, with search, sorting, a filter sidebar, a tile grid and a details panel.
 - The Flashpoint library downloads itself from Flashpoint's servers on first start (no PC needed) and updates every few days. A library copied from a PC still works.
-- Arcade (games) and Theatre (animations), filtered by platform, "Plays on PS5", recently played and downloaded.
 - Web: Flash from Dagobah, PiczoGame and swfchan, and "Play a .swf link" to open any Flash file in Ruffle. Entries a site marks as adult are hidden unless you turn them on in Config.
-- Touchpad pointer (slide to move, press to click, two fingers to scroll), plus USB mouse and keyboard (type to search).
+- Touchpad pointer (slide to move, press to click, two fingers to scroll), plus USB mouse and keyboard.
 - A new icon, an intro with original music, and interface sounds.
 
-**Not tested on a real PS5 yet.** Everything runs on a PC against the PC build of the background service. The web sources were tested against sample pages shaped like those sites, not the live sites. If something goes wrong, the Logs page shows the service's log (`/data/fpps5/fpps5.log`); please open an issue with it.
+**Not tested on a real PS5 yet.** Everything runs on a PC against the PC build of the background service, and the web sources were tested against sample pages shaped like those sites. If something goes wrong, the Logs page shows the service's log (`/data/fpps5/fpps5.log`); please open an issue with it.
 
 **You need**
 - A PS5 that runs homebrew apps, with an ELF loader on port 9021 (etaHEN, or kstuff with elfldr). The app starts its background service through it.
