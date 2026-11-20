@@ -9,6 +9,7 @@
 int lib_open(const char *db_path);
 int lib_is_open(void);
 long long lib_game_count(void);
+void lib_refresh_count(void); /* after the library changed */
 
 /* db-api compatible JSON responses (strings are malloc'd, caller frees). */
 char *lib_search_json(const http_req_t *req, long long *total_out);

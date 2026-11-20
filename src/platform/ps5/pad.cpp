@@ -189,6 +189,17 @@ std::size_t Pad::read(std::span<PadSample> out)
         s.r2 = r.r2;
         s.connected = r.connected != 0;
         s.timestamp_us = r.timestamp_us;
+        // ScePadTouchData sits 52 bytes into the record (42 into reserved0):
+        // touchNum, 7 reserved bytes, then two { u16 x, u16 y, u8 id, 3 pad }.
+        const std::uint8_t *t = r.reserved0 + 42;
+        s.touch_count = t[0] <= 2 ? t[0] : 0;
+        for (int f = 0; f < 2; ++f)
+        {
+            const std::uint8_t *touch = t + 8 + f * 8;
+            s.touch_x[f] = static_cast<std::uint16_t>(touch[0] | (touch[1] << 8));
+            s.touch_y[f] = static_cast<std::uint16_t>(touch[2] | (touch[3] << 8));
+            s.touch_id[f] = touch[4];
+        }
     }
     return static_cast<std::size_t>(count);
 }

@@ -242,12 +242,16 @@ void Backend::search(const SearchQuery &query, std::function<void(SearchResult)>
         target += "&library=" + url_encode(query.library);
     if (query.ps5_only)
         target += "&ps5=true";
+    if (!query.platform.empty())
+        target += "&platform=" + url_encode(query.platform);
     if (query.played)
         target += "&played=true&sort=lastPlayed&dir=desc";
+    else
+        target += "&sort=" + url_encode(query.sort) + (query.desc ? "&dir=desc" : "&dir=asc");
     if (query.installed)
         target += "&installed=true";
-    target += "&filter=true&envelope=1&limit=" + std::to_string(query.limit) +
-              "&offset=" + std::to_string(query.offset);
+    target += std::string(query.show_extreme ? "&filter=false" : "&filter=true") +
+              "&envelope=1&limit=" + std::to_string(query.limit) + "&offset=" + std::to_string(query.offset);
     worker_.queue([this, target, done = std::move(done)] {
         SearchResult result;
         JsonValue root;
@@ -293,6 +297,13 @@ void Backend::game(const std::string &id, std::function<void(GameDetail)> done)
             d.tags = joined(g, "tags");
             d.release_date = str(g, "releaseDate");
             d.series = str(g, "series");
+            d.play_mode = str(g, "playMode");
+            d.status = str(g, "status");
+            d.source = str(g, "source");
+            d.date_added = str(g, "dateAdded");
+            d.language = str(g, "language");
+            d.alternate_titles = str(g, "alternateTitles");
+            d.last_played = str(g, "lastPlayed");
             d.installed = flag(g, "installed");
             d.zipped = flag(g, "zipped");
             for (const JsonValue &data : g["gameData"].items())
@@ -352,6 +363,147 @@ void Backend::jobs(std::function<void(std::vector<Job>)> done)
         if (fetch_json("GET", "/api/jobs", &root, nullptr, 2000))
             jobs = parse_jobs(root);
         post([done, jobs] { done(jobs); });
+    });
+}
+
+void Backend::stats(std::function<void(Stats)> done)
+{
+    worker_.queue([this, done = std::move(done)] {
+        Stats s;
+        JsonValue root;
+        if (fetch_json("GET", "/api/stats", &root, nullptr, 15000))
+        {
+            s.ok = true;
+            for (const JsonValue &row : root["libraryTotals"].items())
+            {
+                const std::string &lib = str(row, "name");
+                const long long count = num(row, "count");
+                if (lib == "arcade")
+                    s.arcade = count;
+                else if (lib == "theatre")
+                    s.theatre = count;
+            }
+            for (const JsonValue &row : root["platformTotals"].items())
+            {
+                if (!str(row, "name").empty())
+                    s.platforms.emplace_back(str(row, "name"), num(row, "count"));
+            }
+        }
+        post([done, s] { done(s); });
+    });
+}
+
+void Backend::sync(bool start, std::function<void(SyncStatus)> done)
+{
+    poll_worker_.queue([this, start, done = std::move(done)] {
+        SyncStatus s;
+        JsonValue root;
+        if (fetch_json(start ? "POST" : "GET", "/api/sync", &root, nullptr, 4000))
+        {
+            s.ok = true;
+            s.state = str(root, "state");
+            s.running = flag(root, "running");
+            s.done = num(root, "done");
+            s.total = num(root, "total");
+            s.message = str(root, "message");
+            s.source = str(root, "source");
+            s.synced_at = num(root, "syncedAt");
+            s.entries = num(root, "entries");
+        }
+        post([done, s] { done(s); });
+    });
+}
+
+void Backend::web_sources(std::function<void(std::vector<WebSource>)> done)
+{
+    worker_.queue([this, done = std::move(done)] {
+        std::vector<WebSource> sources;
+        JsonValue root;
+        if (fetch_json("GET", "/api/web/sources", &root))
+        {
+            for (const JsonValue &s : root["sources"].items())
+            {
+                WebSource src;
+                src.id = str(s, "id");
+                src.name = str(s, "name");
+                src.home = str(s, "home");
+                src.search = flag(s, "search");
+                for (const JsonValue &l : s["lists"].items())
+                    src.lists.push_back(WebList{str(l, "id"), str(l, "name")});
+                sources.push_back(std::move(src));
+            }
+        }
+        post([done, sources] { done(sources); });
+    });
+}
+
+void Backend::web_list(const std::string &source, const std::string &list, const std::string &query, int page,
+                       bool adult, std::function<void(WebPage)> done)
+{
+    std::string target = "/api/web/list?source=" + url_encode(source) + "&list=" + url_encode(list) +
+                         "&page=" + std::to_string(page) + (adult ? "&adult=1" : "&adult=0");
+    if (!query.empty())
+        target += "&q=" + url_encode(query);
+    worker_.queue([this, target, done = std::move(done)] {
+        WebPage p;
+        JsonValue root;
+        if (fetch_json("GET", target, &root, nullptr, 30000))
+        {
+            p.ok = !root["error"].is_string();
+            p.error = str(root, "error");
+            p.more = flag(root, "more");
+            p.hidden = static_cast<int>(num(root, "hidden"));
+            for (const JsonValue &i : root["items"].items())
+                p.items.push_back(WebItem{str(i, "title"), str(i, "page"), str(i, "swf"), str(i, "thumb"),
+                                          flag(i, "adult")});
+        }
+        else
+        {
+            p.error = "The Flashpoint service didn't answer.";
+        }
+        post([done, p] { done(p); });
+    });
+}
+
+void Backend::web_play(const std::string &url, const std::string &title, const std::string &source,
+                       std::function<void(PlayReply)> done)
+{
+    const std::string target = "/api/web/play?url=" + url_encode(url) + "&title=" + url_encode(title) +
+                               "&source=" + url_encode(source);
+    poll_worker_.queue([this, target, done = std::move(done)] {
+        PlayReply r;
+        JsonValue root;
+        if (!fetch_json("POST", target, &root, nullptr, 20000))
+        {
+            r.status = "offline";
+            r.message = "The Flashpoint service didn't answer.";
+        }
+        else
+        {
+            r.status = str(root, "status");
+            r.message = str(root, "message");
+            if (r.status == "pending")
+            {
+                Job job;
+                job.title = str(root, "title");
+                job.state = str(root, "stage");
+                job.done = num(root, "done");
+                job.total = num(root, "total");
+                r.jobs.push_back(job);
+                r.message = job.state;
+            }
+        }
+        post([done, r] { done(r); });
+    });
+}
+
+void Backend::log(std::function<void(std::string)> done)
+{
+    poll_worker_.queue([this, done = std::move(done)] {
+        std::string text;
+        if (!get_bytes("/api/log", &text, 3000))
+            text = "The Flashpoint service didn't answer.";
+        post([done, text] { done(text); });
     });
 }
 

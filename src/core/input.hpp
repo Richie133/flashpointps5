@@ -44,6 +44,11 @@ struct PadSample
     std::uint8_t r2 = 0;
     bool connected = false;
     std::uint64_t timestamp_us = 0;
+    // Touchpad fingers (x 0..~1919, y 0..~1079), Flashpoint PS5 addition.
+    std::uint8_t touch_count = 0;
+    std::uint16_t touch_x[2] = {0, 0};
+    std::uint16_t touch_y[2] = {0, 0};
+    std::uint8_t touch_id[2] = {0, 0};
 };
 
 // Logical actions the UI and games consume.

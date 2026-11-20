@@ -30,6 +30,10 @@ typedef struct fp_config {
   char images_url[512];            /* on-demand logos/screenshots */
   char legacy_fallback_url[512];   /* on-demand Legacy htdocs files */
   char online_api[512];            /* flashpoint-database API (used by the UI) */
+  char metadata_sources[2][256];   /* FPFSS servers the library downloads from */
+  int n_metadata_sources;
+  char cache_path[FP_PATH_MAX];    /* temporary downloads, web thumbnails, SWFs */
+  int web_adult;                   /* show adult entries from web sources */
 
   /* Ruffle Flash PS5 (ZiZc3/Ruffle-Flash-PS5) hand-off. */
   char ruffle_title_id[16];

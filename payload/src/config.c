@@ -40,12 +40,14 @@ static void defaults(void) {
   str_lcpy(g_cfg.flashpoint_path, "/data/flashpoint", sizeof g_cfg.flashpoint_path);
   str_lcpy(g_cfg.run_path, "/data/ruffle/flashpoint", sizeof g_cfg.run_path);
   str_lcpy(g_cfg.log_path, "/data/fpps5/fpps5.log", sizeof g_cfg.log_path);
+  str_lcpy(g_cfg.cache_path, "/data/fpps5/cache", sizeof g_cfg.cache_path);
   /* The Flashpoint PS5 app is the usual front end; websrv's homebrew.js
    * passes --open-browser to use the PS5 browser instead. */
   g_cfg.open_browser = 0;
 #else
   str_lcpy(g_cfg.flashpoint_path, "./flashpoint", sizeof g_cfg.flashpoint_path);
   str_lcpy(g_cfg.run_path, "./run", sizeof g_cfg.run_path);
+  str_lcpy(g_cfg.cache_path, "./cache", sizeof g_cfg.cache_path);
   g_cfg.open_browser = 0;
 #endif
   str_lcpy(g_cfg.ruffle_dir, "/data/ruffle", sizeof g_cfg.ruffle_dir);
@@ -64,6 +66,10 @@ static void defaults(void) {
   str_lcpy(g_cfg.legacy_fallback_url, "https://infinity.flashpointarchive.org/Flashpoint/Legacy/htdocs/",
            sizeof g_cfg.legacy_fallback_url);
   str_lcpy(g_cfg.online_api, "https://db-api.unstable.life", sizeof g_cfg.online_api);
+  /* The launcher's own metadata server, under both of its names. */
+  str_lcpy(g_cfg.metadata_sources[0], "https://fpfss.flashpointarchive.org", 256);
+  str_lcpy(g_cfg.metadata_sources[1], "https://fpfss.unstable.life", 256);
+  g_cfg.n_metadata_sources = 2;
 }
 
 void config_derive_paths(void) {
@@ -102,6 +108,17 @@ static int apply_file(const char *path) {
   get_str(root, "imagesUrl", g_cfg.images_url, sizeof g_cfg.images_url);
   get_str(root, "legacyFallbackUrl", g_cfg.legacy_fallback_url, sizeof g_cfg.legacy_fallback_url);
   get_str(root, "onlineApi", g_cfg.online_api, sizeof g_cfg.online_api);
+  get_str(root, "cachePath", g_cfg.cache_path, sizeof g_cfg.cache_path);
+  {
+    char meta[256] = "";
+    get_str(root, "metadataUrl", meta, sizeof meta);
+    if (meta[0]) {
+      str_lcpy(g_cfg.metadata_sources[0], meta, 256);
+      g_cfg.n_metadata_sources = 1;
+    }
+    cJSON *adult = cJSON_GetObjectItemCaseSensitive(root, "webAdult");
+    if (cJSON_IsBool(adult)) g_cfg.web_adult = cJSON_IsTrue(adult);
+  }
   get_str(root, "ruffleTitleId", g_cfg.ruffle_title_id, sizeof g_cfg.ruffle_title_id);
   get_str(root, "ruffleDir", g_cfg.ruffle_dir, sizeof g_cfg.ruffle_dir);
   get_str(root, "ruffleMode", g_cfg.ruffle_mode, sizeof g_cfg.ruffle_mode);

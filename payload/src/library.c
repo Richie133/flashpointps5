@@ -167,6 +167,15 @@ int lib_open(const char *db_path) {
 }
 
 int lib_is_open(void) { return g_db != NULL; }
+
+void lib_refresh_count(void) {
+  if (!g_db) return;
+  sqlite3_stmt *st;
+  if (sqlite3_prepare_v2(g_db, "SELECT COUNT(*) FROM game", -1, &st, NULL) == SQLITE_OK) {
+    if (sqlite3_step(st) == SQLITE_ROW) g_game_count = sqlite3_column_int64(st, 0);
+    sqlite3_finalize(st);
+  }
+}
 long long lib_game_count(void) { return g_game_count; }
 
 /* ------------------------------------------------------------ search */

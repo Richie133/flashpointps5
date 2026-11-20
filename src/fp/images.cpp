@@ -83,7 +83,7 @@ Texture Images::get(const std::string &rel)
         Decoded decoded;
         decoded.rel = rel;
         std::string bytes;
-        if (backend_.get_bytes("/images/" + rel, &bytes))
+        if (backend_.get_bytes(rel.starts_with("/") ? rel : "/images/" + rel, &bytes))
         {
             int channels = 0;
             unsigned char *pixels = stbi_load_from_memory(

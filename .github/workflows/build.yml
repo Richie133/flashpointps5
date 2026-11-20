@@ -2,8 +2,10 @@
 # install) on releases:
 #   - Publish a release on GitHub with any tag: the zip is attached a few
 #     minutes later, and its sha256 is added under your notes.
-#   - Actions > Build > Run workflow, with "Release tag" filled in: builds that
-#     tag and attaches the zip to its release (e.g. to redo one).
+#   - Actions > Build > Run workflow, with "Release tag" filled in: builds it
+#     and attaches the zip to that release, creating the release (from the
+#     chosen branch) if it doesn't exist yet; a tag with alpha, beta or rc in
+#     it becomes a pre-release.
 #   - Run workflow with "Publish a new release" ticked: creates the release
 #     v<contentVersion> from sce_sys/param.json.
 name: Build
@@ -17,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to build and attach the app to (leave empty to only build)
+        description: Release tag to publish, e.g. v0.0.2-alpha (created if new; empty only builds)
         type: string
         default: ''
       publish:
@@ -34,7 +36,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Check out an existing release tag
+        if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          # an existing tag is rebuilt as it was; a new one is made from this branch
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then git checkout -q "refs/tags/$TAG"; fi
 
       - name: Install the toolchain
         run: |
@@ -84,7 +94,15 @@ jobs:
         run: |
           sha=$(sha256sum dist/PPSA72386.zip | cut -d ' ' -f 1)
           line="\`PPSA72386.zip\` sha256: \`$sha\`"
-          if [[ $MODE == attach ]]; then
+          if [[ $MODE == attach ]] && ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # a new release: from this commit, a pre-release for alpha/beta/rc tags
+            pre=()
+            shopt -s nocasematch
+            [[ $TAG == *alpha* || $TAG == *beta* || $TAG == *rc* ]] && pre=(--prerelease)
+            { cat .github/release-notes.md; printf '\n%s\n' "$line"; } > notes.md
+            gh release create "$TAG" dist/PPSA72386.zip --repo "$GITHUB_REPOSITORY" "${pre[@]}" \
+              --target "$GITHUB_SHA" --title "Flashpoint PS5 ${TAG#v}" --notes-file notes.md
+          elif [[ $MODE == attach ]]; then
             gh release upload "$TAG" dist/PPSA72386.zip --clobber --repo "$GITHUB_REPOSITORY"
             # keep the release's own title and notes; replace an older digest line
             gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > body.md

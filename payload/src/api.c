@@ -17,6 +17,8 @@
 #include "launch.h"
 #include "library.h"
 #include "platform.h"
+#include "sync.h"
+#include "web.h"
 #include "util.h"
 #include "version.h"
 
@@ -145,6 +147,50 @@ static void api_files(http_req_t *req) {
   respond_owned(req, 200, gd_files_json(&li));
 }
 
+static void api_sync(http_req_t *req) {
+  if (!strcmp(req->method, "POST") || http_param_bool(req, "start", 0)) sync_start();
+  respond_owned(req, 200, sync_status_json());
+}
+
+static void api_web(http_req_t *req, const char *what) {
+  char source[32] = "", list[48] = "", q[256] = "", url[2048] = "", title[256] = "";
+  http_param(req, "source", source, sizeof source);
+  if (!strcmp(what, "sources")) {
+    respond_owned(req, 200, web_sources_json());
+  } else if (!strcmp(what, "list")) {
+    http_param(req, "list", list, sizeof list);
+    http_param(req, "q", q, sizeof q);
+    respond_owned(req, 200,
+                  web_list_json(source, list, q, (int)http_param_long(req, "page", 1),
+                                http_param_bool(req, "adult", g_cfg.web_adult)));
+  } else if (!strcmp(what, "thumb")) {
+    char path[FP_PATH_MAX];
+    if (!http_param(req, "u", url, sizeof url) || web_thumb_path(url, path, sizeof path) ||
+        http_respond_file(req, path, "image/jpeg", "Cache-Control: max-age=86400\r\n"))
+      http_respond_text(req, 404, "no picture\n");
+  } else if (!strcmp(what, "play")) {
+    http_param(req, "url", url, sizeof url);
+    http_param(req, "title", title, sizeof title);
+    respond_owned(req, 200, web_play_json(url, title, source));
+  } else {
+    http_respond_json(req, 404, "{\"error\":\"unknown endpoint\"}");
+  }
+}
+
+/* The end of the service's log, for the app's Logs page. */
+static void api_log(http_req_t *req) {
+  size_t len = 0;
+  char *text = g_cfg.log_path[0] ? read_text_file(g_cfg.log_path, &len) : NULL;
+  const char *start = text ? text : "";
+  if (len > 24000) {
+    start = text + len - 24000;
+    const char *nl = strchr(start, '\n');
+    if (nl) start = nl + 1;
+  }
+  http_respond(req, 200, "text/plain; charset=utf-8", start, strlen(start), "Cache-Control: no-store\r\n");
+  free(text);
+}
+
 static void serve_image(http_req_t *req) {
   const char *rel = req->path + strlen("/images/");
   char path[FP_PATH_MAX];
@@ -196,6 +242,9 @@ void api_handle(http_req_t *req, void *ctx) {
     } else if (!strcmp(p, "platforms")) respond_owned(req, 200, lib_platforms_json());
     else if (!strcmp(p, "stats")) respond_owned(req, 200, lib_stats_json());
     else if (!strcmp(p, "jobs")) respond_owned(req, 200, gd_jobs_json());
+    else if (!strcmp(p, "sync")) api_sync(req);
+    else if (!strcmp(p, "log")) api_log(req);
+    else if (!strncmp(p, "web/", 4)) api_web(req, p + 4);
     else if (!strcmp(p, "cancel")) {
       char id[80];
       if (!get_id(req, id, sizeof id))

@@ -30,3 +30,8 @@ char *launch_play(const launch_info_t *li, const http_req_t *req);
 
 /* True when the installed Ruffle Flash PS5 understands launch.txt. */
 int launch_ruffle_direct_supported(void);
+
+/* Hands a standalone .swf (from a website or a link) to Ruffle Flash, as
+ * Flash entries are; 0 on success, with a message for the user either way. */
+int launch_swf(const char *key, const char *title, const char *swf, const char *source_url,
+               char *msg, size_t mlen);

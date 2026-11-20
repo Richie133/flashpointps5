@@ -20,6 +20,7 @@ ELF    := $(BUILD)/flashpoint-ps5.elf
 
 APP_SRCS := src/main.c src/util.c src/config.c src/httpd.c src/library.c \
             src/gamedata.c src/launch.c src/gameserver.c src/api.c \
+            src/sync.c src/web.c \
             src/net_ps5.c src/platform_ps5.c
 TP_SRCS  := third_party/sqlite/sqlite3.c third_party/miniz/miniz.c \
             third_party/cjson/cJSON.c third_party/sha256/sha256.c

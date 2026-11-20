@@ -1,59 +1,86 @@
 # Flashpoint PS5
 
-A PS5 homebrew app (PPSA72386) for browsing and playing a
-[Flashpoint Archive](https://flashpointarchive.org/) library on the TV with a
-controller. It combines the [Flashpoint Launcher](https://github.com/FlashpointProject/launcher)
-(reading Flashpoint's database and downloading game data when you play) with the
-[Flashpoint Database](https://github.com/FlashpointProject/flashpoint-database)'s
-search and entry pages. Flash games play natively in
-[Ruffle Flash PS5](https://github.com/ZiZc3/Ruffle-Flash-PS5).
+A PS5 homebrew app (PPSA72386) for browsing and playing the
+[Flashpoint Archive](https://flashpointarchive.org/) on the TV. It is laid out
+like the [Flashpoint Launcher](https://github.com/FlashpointProject/launcher):
+Arcade and Theatre, search, a filter sidebar, a tile grid and a details panel.
+The library downloads itself from Flashpoint's servers, so no PC is needed.
+Flash plays in [Ruffle Flash PS5](https://github.com/ZiZc3/Ruffle-Flash-PS5),
+including Flash from Dagobah, PiczoGame, swfchan or any `.swf` link.
 
 This is an unofficial port. It is not made or endorsed by Flashpoint Archive.
 
-> **Status:** it builds into a signed app folder, and the whole app runs on a PC against
-> the PC build of its service (pictures below). **It has not been run on a real PS5 yet,**
-> so the first hardware runs may need fixes. Please open an issue with
-> `/data/fpps5/fpps5.log` if something goes wrong.
+> **Status: alpha.** It builds into a signed app folder, and the whole app runs on a PC
+> against the PC build of its service (pictures below). **It has not been run on a real
+> PS5 yet,** so the first hardware runs may need fixes. The Logs page shows the
+> service's log (`/data/fpps5/fpps5.log`); please open an issue with it if something
+> goes wrong.
 
-![The library](docs/media/library.png)
+![Arcade](docs/media/arcade.png)
 
 ## What you need
 
 - A PS5 that runs homebrew apps, with an **ELF loader on port 9021** (etaHEN's,
   or kstuff with elfldr). The app's background service is a payload, and the app
   sends it to that loader the first time you open it.
-- A **Flashpoint library**. Copy `Data/flashpoint.sqlite` from
-  [Flashpoint Infinity](https://flashpointarchive.org/downloads) on a PC to
-  `/data/flashpoint/Data/` on the PS5, or to `flashpoint/Data/` on a USB drive.
-  Game data downloads from Flashpoint's servers the first time you play each game.
-- **Ruffle Flash PS5** (PPSA68091) for Flash games.
+- An internet connection: the list of games and animations comes from
+  Flashpoint's metadata server on first start (as the Flashpoint Launcher does
+  it), and each game's files download the first time you play it.
+- **Ruffle Flash PS5** (PPSA68091) for Flash.
+
+A library copied from a PC still works: put Flashpoint Infinity's
+`Data/flashpoint.sqlite` in `/data/flashpoint/Data/` or a USB drive's
+`flashpoint/Data/`, and the app uses it instead of downloading one.
 
 ## Install
 
-1. Unzip `PPSA72386.zip` from the [latest release](https://github.com/Richie133/flashpointps5/releases/latest)
+1. Unzip `PPSA72386.zip` from the [latest release](https://github.com/Richie133/flashpointps5/releases)
    and copy the `PPSA72386` folder to `/data/homebrew/` on the console (FTP). If
    you use a homebrew store, install it from there instead.
-2. Open **Flashpoint PS5**. If the service isn't running yet, the app starts it.
-   If nothing listens on port 9021, the app asks you to start your ELF loader
-   and press **Cross** to try again.
+2. Open **Flashpoint PS5**. The intro plays while the background service starts.
+   The first time, the library downloads (Home shows the progress); Arcade and
+   Theatre fill in as it arrives.
 
-## Controls
+![The intro](docs/media/intro.png)
 
-| Button | Library | Entry page |
+![Home](docs/media/home.png)
+
+## Using it
+
+| | Controller | Touchpad, mouse, keyboard |
 |---|---|---|
-| **L1 / R1** | Switch between Library, Played, On this PS5 and Setup | |
-| **D-pad / left stick** | Move between games; going past the top or bottom row turns the page | Choose Play or an additional app |
-| **L2 / R2** | Previous or next page (hold to scrub) | |
-| **Cross** | Open the game's page | Play |
-| **Triangle** | Search (system keyboard) | |
-| **Square** | Show only games that play on the PS5, or everything | |
-| **Options** | All, games only, or animations only | |
-| **Circle** | Clear the search | Back |
+| Switch pages (Home, Arcade, Theatre, Web, Logs, Config, About) | **L1 / R1** | Click the menu |
+| Move | **D-pad / left stick**; **L2 / R2** jump a screen; right stick scrolls | Pointer; wheel or two fingers scroll; arrow keys, Page Up / Down, Tab |
+| Play the selected entry | **Cross** | Double-click the tile, or click **Play**; Enter |
+| Search | **Triangle** (system keyboard) | Just type |
+| Sort (title, date added, developer, release date, random) | **Square** | Click the sort menus |
+| Filters (all, plays on PS5, recently played, downloaded, platforms) | Left from the grid, then **Cross** | Click the sidebar |
+| Play any .swf link | **Options** | Web, then "Play a .swf link" |
+| Back, clear the search | **Circle** | Esc, Backspace |
 
-Each page holds 21 entries. The strip above the grid works like a Flash
-timeline: one frame per page, with the red playhead on the page you're viewing.
+The touchpad works like a laptop's: slide one finger to move the pointer,
+press it to click, and slide two fingers to scroll. A USB mouse and keyboard
+work too (Config can turn them off).
 
-![An entry page](docs/media/entry.png)
+### Web
+
+The Web page lists Flash from **Dagobah** (newest, most liked, games, music
+videos, loops), **PiczoGame** (games, animations, Flash loops) and **swfchan**
+(its clean games, stories and music-loop categories), read from those sites'
+own pages when you open them. Search works on Dagobah and PiczoGame. Choosing
+**Play in Ruffle** finds the `.swf` on the entry's page, downloads it and opens
+it in Ruffle Flash. Entries a site marks as adult are hidden unless you turn
+them on in Config.
+
+**Play a .swf link** takes any address: a `.swf` file, or a page with one.
+
+![Web](docs/media/web.png)
+
+### Config
+
+Intro on or off, music and interface sound volume, tile size, showing
+extreme or adult entries, USB keyboard and mouse, updating the library, and
+reconnecting or stopping the background service.
 
 ## What plays
 
@@ -73,13 +100,15 @@ the game there.
 ```
 Flashpoint PS5 app (PPSA72386)            flashpoint-ps5.elf (background service)
 ┌───────────────────────────────┐  HTTP   ┌─────────────────────────────────────────┐
-│ native UI: OpenGL, controller │ ──────► │ :22600  JSON API (db-api compatible)     │
-│ system keyboard and browser   │ 127.0.  │ :22500  Flashpoint-style game server     │
-└───────────────┬───────────────┘ 0.1     │ SQLite  Data/flashpoint.sqlite           │
-                │ first start: sends the  │ GameZIPs, logos, Legacy files on demand  │
-                └── ELF to the loader on  └────────────────┬────────────────────────┘
-                    port 9021                              │ unpack, then launch
-                                                           ▼
+│ native UI: OpenGL, controller │ ──────► │ :22600  JSON API (db-api compatible)    │
+│ touchpad, USB mouse/keyboard  │ 127.0.  │ :22500  Flashpoint-style game server    │
+│ intro music, interface sounds │ 0.1     │ library: built from Flashpoint's        │
+└───────────────┬───────────────┘         │ metadata server (or a PC copy)          │
+                │ first start: sends the  │ web sources and .swf links              │
+                └── ELF to the loader on  │ GameZIPs, logos, Legacy files on demand │
+                    port 9021             └──────────────┬──────────────────────────┘
+                                                         │ unpack, then launch
+                                                         ▼
                                             Ruffle Flash PS5 (PPSA68091)
 ```
 
@@ -92,11 +121,11 @@ in [`payload/`](payload/), and it ships inside the app as
 
 The same service also serves a web version of the interface: open
 `http://<ps5-ip>:22600` on a phone or PC on the same network to browse the
-PS5's library there. The Setup screen shows the address.
+PS5's library there. The About page shows the address.
 
-![Setup](docs/media/setup.png)
+![Config](docs/media/config.png)
 
-*The pictures come from the PC build with a small invented test library.*
+*The pictures come from the PC build with a small invented test library and sample web pages.*
 
 ## Building
 

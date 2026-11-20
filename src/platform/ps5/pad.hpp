@@ -18,6 +18,11 @@ namespace hui::ps5
 class Pad
 {
   public:
+    // The user whose controller this is (-1 before open()).
+    int user() const
+    {
+        return user_;
+    }
     Pad() = default;
     Pad(const Pad &) = delete;
     Pad &operator=(const Pad &) = delete;

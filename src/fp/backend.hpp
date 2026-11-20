@@ -43,6 +43,10 @@ struct SearchQuery
     bool ps5_only = true;  // Flash and HTML5 only
     bool played = false;   // recently played, newest first
     bool installed = false;
+    std::string platform;  // "", "Flash", "HTML5", ...
+    std::string sort = "title"; // title, dateAdded, developer, releaseDate, lastPlayed, random
+    bool desc = false;
+    bool show_extreme = false;
     int offset = 0;
     int limit = 21;
 
@@ -77,6 +81,13 @@ struct GameDetail
     std::string tags;
     std::string release_date;
     std::string series;
+    std::string play_mode;
+    std::string status;
+    std::string source;
+    std::string date_added;
+    std::string language;
+    std::string alternate_titles;
+    std::string last_played;
     bool installed = false;
     bool zipped = false;
     long long size = 0;
@@ -119,6 +130,52 @@ struct ServiceInfo
     int ui_port = kServicePort;
 };
 
+struct Stats
+{
+    bool ok = false;
+    long long arcade = 0, theatre = 0;
+    std::vector<std::pair<std::string, long long>> platforms; // most entries first
+};
+
+struct SyncStatus
+{
+    bool ok = false;
+    std::string state; // idle, running, done, error
+    bool running = false;
+    long long done = 0, total = 0;
+    std::string message;
+    std::string source; // fpfss (downloaded here), pc (copied from a PC), "" (none)
+    long long synced_at = 0;
+    long long entries = 0;
+};
+
+struct WebList
+{
+    std::string id, name;
+};
+
+struct WebSource
+{
+    std::string id, name, home;
+    bool search = false;
+    std::vector<WebList> lists;
+};
+
+struct WebItem
+{
+    std::string title, page, swf, thumb;
+    bool adult = false;
+};
+
+struct WebPage
+{
+    bool ok = false;
+    std::vector<WebItem> items;
+    bool more = false;
+    int hidden = 0;
+    std::string error;
+};
+
 enum class Link : std::uint8_t
 {
     connecting, // asking the service
@@ -152,6 +209,16 @@ class Backend
     void jobs(std::function<void(std::vector<Job>)> done);
     void refresh_info(std::function<void()> done);
     void stop_service(std::function<void(bool)> done);
+    void stats(std::function<void(Stats)> done);
+    // start: begin (or continue) downloading the library first
+    void sync(bool start, std::function<void(SyncStatus)> done);
+    void web_sources(std::function<void(std::vector<WebSource>)> done);
+    void web_list(const std::string &source, const std::string &list, const std::string &query, int page,
+                  bool adult, std::function<void(WebPage)> done);
+    // Finds, downloads and starts a .swf (from a site or any link); poll like play().
+    void web_play(const std::string &url, const std::string &title, const std::string &source,
+                  std::function<void(PlayReply)> done);
+    void log(std::function<void(std::string)> done);
     // Raw GET for images (worker of the caller's choice runs it).
     bool get_bytes(const std::string &target, std::string *body, int timeout_ms = 8000) const;
 

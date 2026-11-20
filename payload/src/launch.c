@@ -257,7 +257,7 @@ static int ruffle_export(const launch_info_t *li, const char *swf, char *msg, si
 
   /* Flashpoint logo as the Ruffle cover, named after the file stem */
   char logo[FP_PATH_MAX];
-  if (!gd_ensure_image(li->logo_path, logo, sizeof logo)) {
+  if (li->logo_path[0] && !gd_ensure_image(li->logo_path, logo, sizeof logo)) {
     char stem[128], key[128], covers[FP_PATH_MAX], cover[FP_PATH_MAX], file[160];
     str_lcpy(stem, strrchr(final_path, '/') + 1, sizeof stem);
     char *dot = strrchr(stem, '.');
@@ -288,6 +288,23 @@ static char *status_json(const char *status, const char *message) {
   sb_json_str(&sb, message);
   sb_append(&sb, "}");
   return sb_steal(&sb);
+}
+
+int launch_swf(const char *key, const char *title, const char *swf, const char *source_url,
+               char *msg, size_t mlen) {
+  launch_info_t li;
+  memset(&li, 0, sizeof li);
+  str_lcpy(li.game_id, key, sizeof li.game_id);
+  str_lcpy(li.title, title, sizeof li.title);
+  str_lcpy(li.platform, "Flash", sizeof li.platform);
+  str_lcpy(li.launch_command, source_url, sizeof li.launch_command);
+  int direct = !strcmp(g_cfg.ruffle_mode, "direct") ||
+               (!strcmp(g_cfg.ruffle_mode, "auto") && launch_ruffle_direct_supported());
+  char exported[FP_PATH_MAX];
+  int rc = direct ? ruffle_direct(&li, swf, msg, mlen)
+                  : ruffle_export(&li, swf, msg, mlen, exported, sizeof exported);
+  if (!rc) plat_notify("%s", msg);
+  return rc;
 }
 
 char *launch_play(const launch_info_t *li, const http_req_t *req) {
