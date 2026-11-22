@@ -6,6 +6,7 @@
 extern "C"
 {
 #include "third_party/stb/image.h"
+#include "src/webp/decode.h" // libwebp's decoder (src/third_party/libwebp)
 }
 
 #include <GL/glcorearb.h>
@@ -88,15 +89,22 @@ Texture Images::get(const std::string &rel)
         // the service may have to fetch it from the internet first
         if (backend_.get_bytes(rel.starts_with("/") ? rel : "/images/" + rel, &bytes, 20000))
         {
+            const auto *data = reinterpret_cast<const unsigned char *>(bytes.data());
+            // "RIFF" size "WEBP": Flash Museum's pictures; everything else goes to stb
+            const bool webp = bytes.size() > 12 && bytes.compare(0, 4, "RIFF") == 0 && bytes.compare(8, 4, "WEBP") == 0;
             int channels = 0;
-            unsigned char *pixels = stbi_load_from_memory(
-                reinterpret_cast<const unsigned char *>(bytes.data()), static_cast<int>(bytes.size()),
-                &decoded.width, &decoded.height, &channels, 4);
+            unsigned char *pixels =
+                webp ? WebPDecodeRGBA(data, bytes.size(), &decoded.width, &decoded.height)
+                     : stbi_load_from_memory(data, static_cast<int>(bytes.size()), &decoded.width, &decoded.height,
+                                             &channels, 4);
             if (pixels != nullptr)
             {
                 decoded.rgba.assign(pixels, pixels + static_cast<std::size_t>(decoded.width) *
                                                          decoded.height * 4);
-                stbi_image_free(pixels);
+                if (webp)
+                    WebPFree(pixels);
+                else
+                    stbi_image_free(pixels);
                 shrink(decoded.rgba, decoded.width, decoded.height);
             }
         }

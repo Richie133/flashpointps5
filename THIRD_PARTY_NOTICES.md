@@ -13,6 +13,7 @@ adapts the following.
 | offact: the `sceImeDialog` parameter layout | `src/platform/ps5/services.cpp` | ps5-payload-dev | GPL-3.0 |
 | Ruffle Flash PS5: USB keyboard and mouse record layouts, how a title loads those libraries (sysmodules 0x0106 / 0x00a9, then looked up), the touchpad data offset, and the `sceAudioOut` parameters | `src/fp/hid_records.hpp`, `src/fp/hid_common.cpp`, `src/platform/ps5/hid.cpp`, `src/platform/ps5/pad.cpp` (touch fields), `src/platform/ps5/audio_out.cpp` | ZiZc3 and Ruffle Flash PS5 contributors (layouts from the ps5-native-gamepad-input-research notes) | GPL-3.0 |
 | stb_image (PNG, JPEG and GIF decoders enabled) | `src/third_party/stb/` | Sean Barrett and contributors | Public domain or MIT (`src/third_party/stb/LICENSE`) |
+| libwebp 1.6.0, decoder only (Flash Museum's WebP pictures) | `src/third_party/libwebp/` | (c) 2010 Google Inc. | BSD 3-Clause (`src/third_party/libwebp/COPYING`), with Google's patent grant (`src/third_party/libwebp/PATENTS`) |
 | stb_image_write (PC snapshot tool only, not in the PS5 app) | `host/third_party/stb_image_write.h` | Sean Barrett and contributors | Public domain or MIT |
 | Shape shader distance functions | `src/gfx/gl_batch.cpp` | Inigo Quilez | MIT |
 
@@ -53,9 +54,9 @@ The service is built with the [PS5 Payload SDK](https://github.com/ps5-payload-d
 
 ## Web sources
 
-Dagobah, PiczoGame and swfchan are read from their public pages only when you
-open them in the app, as a browser shows them; nothing from them is stored in
-this repository. Their files belong to their authors.
+Dagobah, PiczoGame, swfchan and Flash Museum are read from their public pages
+only when you open them in the app, as a browser shows them; nothing from them
+is stored in this repository. Their files belong to their authors.
 
 ## Flashpoint content
 

@@ -1,4 +1,11 @@
-Flashpoint PS5 0.0.5 alpha: a native PS5 app (PPSA72386) for the Flashpoint Archive.
+Flashpoint PS5 0.0.6 alpha: a native PS5 app (PPSA72386) for the Flashpoint Archive.
+
+**New in 0.0.6**
+- Flash Museum (flashmuseum.net) on the Web page: Games, Animations, Hall of Fame and eleven genres, with search. Play in Ruffle follows the game's player page to its Flash file.
+- WebP pictures, which Flash Museum uses for its logos, decoded with Google's libwebp.
+- The Web page's sidebar scrolls when its lists don't fit (D-pad, mouse wheel or two fingers on the touchpad).
+
+Flash Museum hasn't been tried from a PS5 yet: its pages were read from the web, and the player page that names each file couldn't be. If Play in Ruffle says it found no Flash file, the Logs page shows what the player page held; a photo of that helps fix it.
 
 **Fixed in 0.0.5**
 - Search crashed the app ("Game or App Error", SIGSEGV in eboot.bin). The system keyboard's library isn't loaded when a homebrew app starts, so the app's link to it pointed at nothing. The app now loads that library itself (sysmodule 0x0096) and looks its functions up.

@@ -32,6 +32,22 @@ int net_download(const char *url, const char *dest, net_progress_cb cb, void *ud
            "<a href=\"https://piczogame.net/content/games-page3.html\">3</a>";
   else if (!strcmp(url, "https://piczogame.net/content/games-page3.html"))
     body = "<a href=\"https://piczogame.net/play/d.html\">Ninja 3</a>";
+  /* Flash Museum: a WordPress listing with lazy logos, a game page framing
+   * its player, and the player page naming the file */
+  else if (!strcmp(url, "https://flashmuseum.net/games/"))
+    body = "<article><a href=\"https://flashmuseum.net/game/stick-war-4xx/\"><img src=\"data:image/svg+xml,x\" "
+           "data-src=\"https://flashmuseum.net/wp-content/uploads/images/game-logo/s/stick-war-logo-4xx.webp\" "
+           "alt=\"Stick War logo\"></a><h3><a href=\"https://flashmuseum.net/game/stick-war-4xx/\">Stick War</a></h3>"
+           "</article><article><a href=\"/game/territory-war-sg3/\"><img alt=\"Territory War logo\"></a></article>"
+           "<a href=\"https://flashmuseum.net/game/stick-war-4xx/#respond\">Comments</a>"
+           "<a href=\"https://flashmuseum.net/genre/stick/\">Stick</a>"
+           "<a href=\"https://flashmuseum.net/games/page/2/\">Next</a>";
+  else if (!strcmp(url, "https://flashmuseum.net/game/stick-war-4xx/"))
+    body = "<iframe class=\"fm-player-frame\" src=\"https://player.flashmuseum.net/game/stick-war-4xx/\"></iframe>";
+  else if (!strcmp(url, "https://player.flashmuseum.net/game/stick-war-4xx/"))
+    body = "<script src=\"https://unpkg.com/@ruffle-rs/ruffle\"></script><script>window.RufflePlayer.newest()"
+           ".createPlayer().load({\"url\":\"https:\\/\\/files.flashmuseum.net\\/s\\/stick-war.swf\"});</script>";
+  else if (!strcmp(url, "https://files.flashmuseum.net/s/stick-war.swf")) body = "CWS\x09....";
   if (offline && strstr(url, "/content/")) body = NULL;
   if (!body) { snprintf(err, errlen, "404 %s", url); return -1; }
   mkdirs_for_file(dest);
@@ -113,6 +129,26 @@ int main(void) {
   budget = 6;
   err[0] = 0;
   assert(resolve_swf("https://piczogame.net/play/missing.html", dest, 0, &budget, err, sizeof err));
+  /* Flash Museum: titles from link text or the logo's alt, logos from the
+   * page or built from the slug, one entry per game */
+  char *fm = web_list_json("flashmuseum", "games", "", 1, 0);
+  assert(strstr(fm, "\"title\":\"Stick War\"") && strstr(fm, "\"title\":\"Territory War\""));
+  assert(strstr(fm, "game-logo/s/stick-war-logo-4xx.webp"));
+  assert(strstr(fm, "game-logo/t/territory-war-logo-sg3.webp"));
+  assert(!strstr(fm, "#respond") && !strstr(fm, "genre/stick") && strstr(fm, "\"more\":true"));
+  free(fm);
+  /* its search page isn't confirmed: with nothing from it, titles are matched */
+  fm = web_list_json("flashmuseum", "games", "territory", 1, 0);
+  assert(strstr(fm, "Territory War") && !strstr(fm, "Stick War"));
+  free(fm);
+  /* playing: game page -> player frame -> the file it loads */
+  {
+    char d2[1200], e2[256] = "";
+    snprintf(d2, sizeof d2, "%s/fm.swf", g_cfg.cache_path);
+    int b2 = 8;
+    assert(!resolve_swf("https://flashmuseum.net/game/stick-war-4xx/", d2, 0, &b2, e2, sizeof e2));
+  }
+
   /* PiczoGame has no search page: its list pages are read and matched */
   char *json = web_list_json("piczogame", "games", "ninja", 1, 0);
   assert(strstr(json, "Ninja Run") && strstr(json, "Space Ninja") && strstr(json, "Ninja 3"));

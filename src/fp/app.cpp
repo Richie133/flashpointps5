@@ -350,7 +350,26 @@ Rect App::dir_rect() const { return {1630.0f, 12.0f, 172.0f, 40.0f}; }
 
 Rect App::sidebar_area() const { return {0.0f, kMenuH, kSideW, kH - kMenuH - kStatusH}; }
 
-Rect App::sidebar_row_rect(int row) const { return {0.0f, kMenuH + 10.0f + row * 46.0f, kSideW, 44.0f}; }
+Rect App::sidebar_row_rect(int row) const
+{
+    return {0.0f, kMenuH + 10.0f + row * 46.0f - side_scroll_, kSideW, 44.0f};
+}
+
+float App::side_max_scroll() const
+{
+    const float content = 20.0f + static_cast<float>(sidebar_rows().size()) * 46.0f;
+    return std::max(0.0f, content - sidebar_area().h);
+}
+
+void App::side_follow(int row)
+{
+    const float top = 10.0f + row * 46.0f, h = sidebar_area().h;
+    if (top - 10.0f < side_scroll_to_)
+        side_scroll_to_ = top - 10.0f;
+    else if (top + 44.0f + 10.0f > side_scroll_to_ + h)
+        side_scroll_to_ = top + 44.0f + 10.0f - h;
+    side_scroll_to_ = std::clamp(side_scroll_to_, 0.0f, side_max_scroll());
+}
 
 Rect App::grid_area() const { return {kSideW, kMenuH, kW - kSideW - kDetailW, kH - kMenuH - kStatusH}; }
 
@@ -994,6 +1013,7 @@ void App::update(const InputFrame &raw, const PadSample &pad, const hid::Frame &
     for (Browse &b : browse_)
         b.scroll += (b.scroll_to - b.scroll) * std::min(1.0f, dt * 14.0f);
     web_.scroll += (web_.scroll_to - web_.scroll) * std::min(1.0f, dt * 14.0f);
+    side_scroll_ += (side_scroll_to_ - side_scroll_) * std::min(1.0f, dt * 14.0f);
     if (Browse *b = browse())
         ensure_pages(*b);
     if (tab_ == kWeb && !web_.requested)
@@ -1323,6 +1343,11 @@ void App::scroll_at(float x, float y, float pixels)
         log_scroll_ = std::max(0.0f, log_scroll_ + pixels);
         return;
     }
+    if ((browse() || tab_ == kWeb) && inside(sidebar_area(), x, y))
+    {
+        side_scroll_to_ = std::clamp(side_scroll_to_ + pixels, 0.0f, side_max_scroll());
+        return;
+    }
     if (!(browse() || tab_ == kWeb) || !inside(grid_area(), x, y))
         return;
     float *target = grid_scroll();
@@ -1496,6 +1521,7 @@ void App::switch_tab(int tab)
     if (search_wait_ >= 0.0f) // typed but not applied yet: this tab's list follows it first
         apply_search(search_);
     tab_search_[static_cast<std::size_t>(tab_)] = search_;
+    side_scroll_ = side_scroll_to_ = 0.0f;
     tab_ = tab;
     search_ = tab_search_[static_cast<std::size_t>(tab_)];
     images_.cancel_pending(); // the new page's pictures first, not the old page's queue
@@ -2012,6 +2038,10 @@ void App::nav_sidebar(const InputFrame &input)
     }
     pointer_.hover_region = kSidebar;
     pointer_.hover_index = cursor;
+    // follow the controller's cursor (not the pointer's row: resting the
+    // pointer on a half-shown row would keep scrolling)
+    if (input.nav == Direction::up || input.nav == Direction::down || !pointer_.visible)
+        side_follow(cursor);
     if (input.is_pressed(Action::confirm))
     {
         const bool link = rows[static_cast<std::size_t>(cursor)].kind == 7;
@@ -3194,7 +3224,7 @@ void App::draw_about(gfx::DrawList &list) const
     list.rounded_rect({0, kMenuH, kW, kH - kMenuH - kStatusH}, 0, kBg);
     draw_mark(list, 190, 136, 120, kMark);
     ui::text(list, fonts_.bold, "Flashpoint PS5", 340, 200, 48, kText);
-    ui::text(list, fonts_.regular, "App 0.0.5 alpha, service " + backend_.info().version, 342, 240, 22, kMuted);
+    ui::text(list, fonts_.regular, "App 0.0.6 alpha, service " + backend_.info().version, 342, 240, 22, kMuted);
     const char *const paragraphs[] = {
         "An unofficial PS5 front end for the Flashpoint Archive, the community project that preserves web games and "
         "animations. It is not made or endorsed by Flashpoint Archive.",
@@ -3203,8 +3233,8 @@ void App::draw_about(gfx::DrawList &list) const
         "Built on the Flashpoint Launcher and Flashpoint Database (MIT), ps5-native-app-boilerplate and "
         "ps5-homebrew-ui by BlackBearReloaded, PayLoader by Marice, offact and Ruffle Flash PS5 (GPL-3.0), stb, "
         "SQLite, miniz and cJSON. Fonts: Atkinson Hyperlegible and Silkscreen (SIL OFL). Music and sounds are original.",
-        "Dagobah, PiczoGame and swfchan lists are read from those sites' own pages when you open them. Their files "
-        "belong to their authors.",
+        "Dagobah, PiczoGame, swfchan and Flash Museum lists are read from those sites' own pages when you open "
+        "them. Their files belong to their authors. WebP pictures are decoded with libwebp (BSD).",
         "Licensed under the GNU GPL v3 or later. Source: github.com/Richie133/flashpointps5",
     };
     const ServiceInfo &info = backend_.info();

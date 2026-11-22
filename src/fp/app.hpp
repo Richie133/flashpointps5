@@ -271,6 +271,9 @@ class App
     std::string osk_key_label(int row, int col) const;
     void draw_osk(gfx::DrawList &list) const;
 
+    float side_scroll_ = 0.0f, side_scroll_to_ = 0.0f; // the sidebar, when its rows don't fit
+    void side_follow(int row);                         // scroll the sidebar to show a row
+    float side_max_scroll() const;
     std::string search_;                            // the open tab's search box
     std::array<std::string, kTabCount> tab_search_; // each tab keeps its own
     float search_wait_ = -1.0f;

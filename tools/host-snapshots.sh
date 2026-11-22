@@ -30,12 +30,12 @@ for source in "${sources[@]}"; do
     object="$build/obj/${relative//\//_}.o"
     if [[ $source == *.c ]]; then
         ninja_inputs=("$source" "$cc")
-        ninja_edge CC "$object" "${compiler_cache[@]}" "$cc" -std=c11 -O2 -w -I"$root/src" \
+        ninja_edge CC "$object" "${compiler_cache[@]}" "$cc" -std=c11 -O2 -w -I"$root/src" -I"$root/src/third_party/libwebp" \
             -MD -MF "$object.d" -c "$source" -o "$object"
     else
         ninja_inputs=("$source" "$cxx")
         ninja_edge CXX "$object" "${compiler_cache[@]}" "$cxx" -std=c++20 -O2 -Wall -Wextra \
-            -DGL_GLEXT_PROTOTYPES=1 -I"$root/src" -I"$root/host" -Wno-missing-field-initializers -MD -MF "$object.d" -c "$source" -o "$object"
+            -DGL_GLEXT_PROTOTYPES=1 -I"$root/src" -I"$root/src/third_party/libwebp" -I"$root/host" -Wno-missing-field-initializers -MD -MF "$object.d" -c "$source" -o "$object"
     fi
     objects+=("$object")
 done

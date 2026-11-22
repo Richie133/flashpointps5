@@ -86,7 +86,8 @@ static int allowed_host(const char *url) {
   char host[128];
   host_of(url, host, sizeof host);
   return host_is(host, "dagobah.net") || host_is(host, "piczogame.net") ||
-         host_is(host, "swfchan.com") || host_is(host, "swfchan.net");
+         host_is(host, "swfchan.com") || host_is(host, "swfchan.net") ||
+         host_is(host, "flashmuseum.net");
 }
 
 /* HTML entities that turn up in links and titles. */
@@ -160,6 +161,15 @@ static void url_encode_q(sb_t *sb, const char *s, int plus_spaces) {
 }
 
 /* Downloads a page (cached for ten minutes); caller frees. */
+/* net_download, but in tests every https address goes to the stand-in. */
+static int web_download(const char *url, const char *dest, net_progress_cb cb, void *ud, char *err,
+                        size_t errlen) {
+  char u[2048];
+  str_lcpy(u, url, sizeof u);
+  test_rewrite(u, sizeof u);
+  return net_download(u, dest, cb, ud, err, errlen);
+}
+
 /* Download to a name of our own, then move it into place, so two
  * requests for the same URL never write one file at once. */
 static int download_atomic(const char *url, const char *path, char *err, size_t errlen) {
@@ -167,7 +177,7 @@ static int download_atomic(const char *url, const char *path, char *err, size_t 
   char tmp[FP_PATH_MAX];
   snprintf(tmp, sizeof tmp, "%s.%u.tmp", path, __sync_fetch_and_add(&counter, 1));
   mkdirs_for_file(path);
-  if (net_download(url, tmp, NULL, NULL, err, errlen)) {
+  if (web_download(url, tmp, NULL, NULL, err, errlen)) {
     unlink(tmp);
     return -1;
   }
@@ -264,11 +274,20 @@ static const list_def_t k_piczo_lists[] = {
   {"all", "Everything"}, {NULL, NULL}};
 static const list_def_t k_swfchan_lists[] = {
   {"games", "Games"}, {"stories", "Stories"}, {"loops", "Music loops"}, {NULL, NULL}};
+/* Flash Museum (WordPress): /games/, /animations/, /collection/hall-of-fame/
+ * and /genre/SLUG/, each with /page/N/ after it. */
+static const list_def_t k_fm_lists[] = {
+  {"games", "Games"}, {"animations", "Animations"}, {"hall-of-fame", "Hall of Fame"},
+  {"action", "Action"}, {"adventure", "Adventure"}, {"puzzle", "Puzzle"},
+  {"platformer", "Platformer"}, {"shooter", "Shooter"}, {"strategy", "Strategy"},
+  {"tower-defense", "Tower defense"}, {"escape-the-room", "Escape the room"},
+  {"racing", "Racing"}, {"sports", "Sports"}, {"stick", "Stick"}, {NULL, NULL}};
 
 static const site_def_t k_sites[] = {
   {"dagobah", "Dagobah", "https://dagobah.net/", k_dagobah_lists, 1},
   {"piczogame", "PiczoGame", "https://piczogame.net/", k_piczo_lists, 0},
   {"swfchan", "swfchan", "https://swfchan.com/", k_swfchan_lists, 0},
+  {"flashmuseum", "Flash Museum", "https://flashmuseum.net/", k_fm_lists, 1},
   {NULL, NULL, NULL, NULL, 0}};
 
 static const site_def_t *find_site(const char *id) {
@@ -341,6 +360,25 @@ static int list_url(const char *site, const char *list, const char *q, int page,
                                                 : "categories-gameclean.shtml";
     if (page > 1) ok = 0; /* one page each */
     sb_printf(&sb, "https://swfchan.com/%s", file);
+  } else if (!strcmp(site, "flashmuseum")) {
+    if (q && q[0]) { /* WordPress's own search */
+      sb_append(&sb, "https://flashmuseum.net/");
+      if (page > 1) sb_printf(&sb, "page/%d/", page);
+      sb_append(&sb, "?s=");
+      url_encode_q(&sb, q, 1);
+    } else {
+      const char *l = list && list[0] ? list : "games";
+      int known = 0;
+      for (int i = 0; k_fm_lists[i].id; i++) known |= !strcmp(k_fm_lists[i].id, l);
+      if (!known) l = "games";
+      if (!strcmp(l, "games") || !strcmp(l, "animations"))
+        sb_printf(&sb, "https://flashmuseum.net/%s/", l);
+      else if (!strcmp(l, "hall-of-fame"))
+        sb_append(&sb, "https://flashmuseum.net/collection/hall-of-fame/");
+      else
+        sb_printf(&sb, "https://flashmuseum.net/genre/%s/", l);
+      if (page > 1) sb_printf(&sb, "page/%d/", page);
+    }
   } else {
     ok = 0;
   }
@@ -540,6 +578,107 @@ static void parse_swfchan(const char *page_url, const char *html, items_t *out) 
   }
 }
 
+/* Flash Museum: links to /game/SLUG-ID/ and /animation/SLUG-ID/ (the link
+ * text, or the logo's alt text, is the title). Logos are
+ * /wp-content/uploads/images/game-logo/F/SLUG-logo-ID.webp: taken from the
+ * page when it names one, otherwise built from the slug. */
+static void parse_flashmuseum(const char *page_url, const char *html, items_t *out) {
+  const char *pos = html;
+  attr_t a;
+  while (next_attr(html, &pos, &a)) {
+    if (a.is_src) continue;
+    char href[1024], abs[1024];
+    if (a.len >= sizeof href) continue;
+    memcpy(href, a.at, a.len);
+    href[a.len] = 0;
+    absolutize(page_url, href, abs, sizeof abs);
+    char host[128];
+    host_of(abs, host, sizeof host);
+    if (!host_is(host, "flashmuseum.net") && !(test_base() && strstr(abs, "/flashmuseum.net/"))) continue;
+    const char *kind = strstr(abs, "/game/");
+    int anim = 0;
+    if (!kind) {
+      kind = strstr(abs, "/animation/");
+      anim = kind != NULL;
+    }
+    if (!kind || strstr(abs, "player.flashmuseum.net") || strchr(abs, '#') || strchr(abs, '?')) continue;
+    const char *slug = kind + (anim ? 11 : 6);
+    size_t sl = strcspn(slug, "/");
+    if (sl == 0 || slug[sl] != '/' || slug[sl + 1]) continue; /* exactly /game/SLUG/ */
+
+    web_item_t *w = NULL;
+    for (int i = 0; i < out->n; i++) {
+      if (!strcmp(out->items[i].page, abs)) w = &out->items[i];
+    }
+    if (!w) {
+      w = items_add(out);
+      str_lcpy(w->page, abs, sizeof w->page);
+    }
+    /* the link's text, or an <img alt="... logo"> inside it */
+    const char *gt = strchr(pos, '>');
+    const char *end = strcasestr(pos, "</a>");
+    if (gt && end && gt < end && end - gt < 2000) {
+      char text[256] = "";
+      strip_tags(gt + 1, (size_t)(end - gt - 1), text, sizeof text);
+      const char *alt = strcasestr(gt, "alt=");
+      if (!text[0] && alt && alt < end) {
+        alt += 4;
+        char qc = (*alt == '"' || *alt == '\'') ? *alt++ : 0;
+        size_t n = qc ? strcspn(alt, qc == '"' ? "\"" : "'") : strcspn(alt, " >");
+        strip_tags(alt, n, text, sizeof text);
+      }
+      size_t tl = strlen(text);
+      if (tl > 5 && !strcasecmp(text + tl - 5, " logo")) text[tl - 5] = 0;
+      if (text[0] && (!w->title[0] || strlen(text) > strlen(w->title))) str_lcpy(w->title, text, sizeof w->title);
+    }
+    if (!w->thumb[0]) {
+      /* SLUG-ID: the logo is NAME-logo-ID.webp */
+      char name[512];
+      if (sl >= sizeof name) continue;
+      memcpy(name, slug, sl);
+      name[sl] = 0;
+      char *dash = strrchr(name, '-');
+      if (!dash) continue;
+      *dash = 0;
+      const char *id = dash + 1;
+      char needle[600];
+      snprintf(needle, sizeof needle, "%s-logo-%s.", name, id);
+      const char *hit = strstr(html, needle);
+      if (hit) {
+        const char *s0 = hit;
+        while (s0 > html && !strchr("\"' (,=\n", s0[-1])) s0--;
+        size_t n = strcspn(hit, "\"' ),\n");
+        size_t len = (size_t)(hit - s0) + n;
+        char raw[1024];
+        if (len < sizeof raw) {
+          memcpy(raw, s0, len);
+          raw[len] = 0;
+          absolutize(page_url, raw, w->thumb, sizeof w->thumb);
+        }
+      } else if (isalnum((unsigned char)name[0])) {
+        snprintf(w->thumb, sizeof w->thumb,
+                 "https://flashmuseum.net/wp-content/uploads/images/%s-logo/%c/%s-logo-%s.webp",
+                 anim ? "animation" : "game", tolower((unsigned char)name[0]), name, id);
+        test_rewrite(w->thumb, sizeof w->thumb);
+      }
+    }
+  }
+  for (int i = 0; i < out->n; i++) {
+    web_item_t *w = &out->items[i];
+    if (w->title[0]) continue;
+    const char *slug = strstr(w->page, "/game/");
+    slug = slug ? slug + 6 : strstr(w->page, "/animation/") + 11;
+    char t[256];
+    title_from_file(slug, strcspn(slug, "/"), t, sizeof t);
+    char *dash = strrchr(t, '-');
+    if (dash) *dash = 0; /* the ID */
+    for (char *c = t; *c; c++) {
+      if (*c == '-') *c = ' ';
+    }
+    str_lcpy(w->title, t, sizeof w->title);
+  }
+}
+
 /* Every word of the query appears in the title. */
 static int title_matches(const char *title, const char *q) {
   char words[256];
@@ -562,9 +701,11 @@ static int list_page(const site_def_t *def, const char *list, const char *q, int
   if (!html) return -1;
   if (!strcmp(def->id, "dagobah")) parse_dagobah(url, html, items);
   else if (!strcmp(def->id, "piczogame")) parse_piczogame(url, html, items);
+  else if (!strcmp(def->id, "flashmuseum")) parse_flashmuseum(url, html, items);
   else parse_swfchan(url, html, items);
   char next[64];
   if (!strcmp(def->id, "piczogame")) snprintf(next, sizeof next, "-page%d.html", page + 1);
+  else if (!strcmp(def->id, "flashmuseum")) snprintf(next, sizeof next, "/page/%d/", page + 1);
   else snprintf(next, sizeof next, "page=%d", page + 1);
   if (strcmp(def->id, "swfchan")) *more = strstr(html, next) != NULL;
   free(html);
@@ -580,10 +721,11 @@ char *web_list_json(const char *site, const char *list, const char *q, int page,
   if (page < 1) page = 1;
   if (!list) list = "";
   const int searching = q && q[0];
-  const int local = searching && !def->searchable;
+  int local = searching && !def->searchable;
 
   items_t items = {0};
   int more = 0, pg = page, failed = 0;
+scan:
   for (int scanned = 0; scanned < (local ? 8 : 1); scanned++, pg++) {
     items_t got = {0};
     if (list_page(def, list, local ? NULL : q, pg, &got, &more)) {
@@ -602,6 +744,22 @@ char *web_list_json(const char *site, const char *list, const char *q, int page,
       pg++;
       break;
     }
+  }
+  /* Flash Museum's search page is WordPress's usual one, not confirmed:
+   * when it gives nothing, match titles in the list instead */
+  int fm_unmatched = 0;
+  if (!local && searching && !strcmp(def->id, "flashmuseum") && items.n > 0) {
+    fm_unmatched = 1; /* a page of entries none of which match looks like an ignored search */
+    for (int i = 0; i < items.n && fm_unmatched; i++) fm_unmatched = !title_matches(items.items[i].title, q);
+  }
+  if (!local && searching && !strcmp(def->id, "flashmuseum") && (failed || items.n == 0 || fm_unmatched)) {
+    LOG("web: %s search gave nothing; matching titles instead", def->name);
+    local = 1;
+    failed = 0;
+    more = 0;
+    pg = page;
+    items.n = 0;
+    goto scan;
   }
   if (failed) {
     free(items.items);
@@ -737,8 +895,10 @@ static int collect_candidates(const char *page_url, const char *html, char cand[
     memcpy(raw, a.at, a.len);
     raw[a.len] = 0;
     absolutize(page_url, raw, abs, sizeof abs);
+    /* Flash Museum's game page frames player.flashmuseum.net/game/SLUG/ */
     int watch = str_contains_ci(abs, "flash.asp") || str_contains_ci(abs, "/embed/") ||
-                (a.is_src && str_contains_ci(abs, ".htm") && allowed_host(abs));
+                (a.is_src && allowed_host(abs) &&
+                 (str_contains_ci(abs, ".htm") || str_contains_ci(abs, "player.flashmuseum.net/")));
     if (!watch || strncasecmp(abs, "http", 4)) continue;
     int dup = 0;
     for (int i = 0; i < n; i++) dup |= !strcmp(cand[i], abs);
@@ -785,7 +945,7 @@ static int resolve_swf(const char *url, const char *dest, int depth, int *budget
   char tmp[FP_PATH_MAX];
   snprintf(tmp, sizeof tmp, "%s.try%d", dest, *budget);
   unlink(tmp);
-  if (net_download(url, tmp, job_progress, NULL, err, errlen)) return -1;
+  if (web_download(url, tmp, job_progress, NULL, err, errlen)) return -1;
   if (is_swf_file(tmp)) {
     unlink(dest);
     if (rename(tmp, dest)) {
@@ -805,6 +965,13 @@ static int resolve_swf(const char *url, const char *dest, int depth, int *budget
   if (!html) return -1;
   char (*cand)[1024] = calloc(12, 1024);
   int n = cand ? collect_candidates(url, html, cand, 12) : 0;
+  if (n == 0) {
+    /* for the log: how the page starts its player, to fix the next version */
+    const char *hint = strcasestr(html, "RufflePlayer");
+    if (!hint) hint = strcasestr(html, ".load(");
+    if (hint) LOG("web: %s names no .swf; near the player: %.240s", url, hint);
+    else LOG("web: %s names no .swf (%zu bytes)", url, len);
+  }
   free(html);
   for (int i = 0; i < n; i++) {
     if (!strcmp(cand[i], url)) continue;

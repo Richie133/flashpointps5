@@ -6,7 +6,7 @@ like the [Flashpoint Launcher](https://github.com/FlashpointProject/launcher):
 Arcade and Theatre, search, a filter sidebar, a tile grid and a details panel.
 The library downloads itself from Flashpoint's servers, so no PC is needed.
 Flash plays in [Ruffle Flash PS5](https://github.com/ZiZc3/Ruffle-Flash-PS5),
-including Flash from Dagobah, PiczoGame, swfchan or any `.swf` link.
+including Flash from Dagobah, PiczoGame, swfchan, Flash Museum or any `.swf` link.
 
 This is an unofficial port. It is not made or endorsed by Flashpoint Archive.
 
@@ -65,10 +65,12 @@ work too (Config can turn them off).
 ### Web
 
 The Web page lists Flash from **Dagobah** (newest, most liked, games, music
-videos, loops), **PiczoGame** (games, animations, Flash loops) and **swfchan**
-(its clean games, stories and music-loop categories), read from those sites'
-own pages when you open them. Search works on all three: Dagobah has its own,
-and PiczoGame and swfchan lists are matched by title as they load. Choosing
+videos, loops), **PiczoGame** (games, animations, Flash loops), **swfchan**
+(its clean games, stories and music-loop categories) and **Flash Museum**
+(games, animations, Hall of Fame and genres), read from those sites' own pages
+when you open them. Search works on all four: Dagobah and Flash Museum have
+their own, and PiczoGame and swfchan lists are matched by title as they load.
+Choosing
 **Play in Ruffle** finds the `.swf` on the entry's page, downloads it and opens
 it in Ruffle Flash. Entries a site marks as adult are hidden unless you turn
 them on in Config.

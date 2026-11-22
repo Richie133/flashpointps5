@@ -78,7 +78,7 @@ bool load_font(hui::gfx::Renderer &renderer, const std::string &path, hui::gfx::
 // seconds (and until the app is idle); then maybe save a picture.
 struct Step
 {
-    const char *press; // button name, "tab:N", "move:x,y", "click", "type:text"
+    const char *press; // button name, "tab:N", "move:x,y", "click", "wheel:N", "type:text"
     float settle;
     const char *picture;
 };
@@ -111,6 +111,10 @@ const Step kTour[] = {
     {"tab:3", 3.5f, "13-web"},
     {"move:640,180", 0.2f, nullptr},
     {"click", 1.5f, "14-web-selected"},
+    // Flash Museum: the 18th sidebar row is its Games list
+    {"move:180,878", 0.2f, nullptr},
+    {"click", 3.0f, "14b-web-flash-museum"},
+    {"wheel:-6", 1.0f, "14c-web-sidebar-scrolled"},
     {"tab:4", 1.5f, "15-logs"},
     {"tab:5", 0.8f, "16-config"},
     {"tab:6", 0.8f, "17-about"},
@@ -339,6 +343,12 @@ int main(int argc, char **argv)
         else if (p == "click")
         {
             f.clicked = hui::fp::hid::kMouseLeft;
+            hui::fp::hid::hid_host_push(f);
+            frame(hui::InputFrame{});
+        }
+        else if (p.rfind("wheel:", 0) == 0) // notches, negative = down
+        {
+            f.wheel = std::atoi(p.c_str() + 6);
             hui::fp::hid::hid_host_push(f);
             frame(hui::InputFrame{});
         }
