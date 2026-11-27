@@ -1,4 +1,12 @@
-Flashpoint PS5 0.0.6 alpha: a native PS5 app (PPSA72386) for the Flashpoint Archive.
+Flashpoint PS5 0.0.7 alpha: a native PS5 app (PPSA72386) for the Flashpoint Archive.
+
+**Fixed in 0.0.7**
+- Arcade and Theatre stopped on "The search didn't finish" with the full library. Every page made the service read the whole library (about 400 MB) twice, and the sidebar's totals read it six times, which took longer than the app waits on a PS5. The service now adds its own search indexes to the library, once, and reads only those: a page reads about 1–20 MB the first time and almost nothing after that, since the list of matches is kept and the next pages come from it. The first start after updating spends a moment adding the indexes (the Logs page says "search indexes ready"); searches are slow until then.
+- The sidebar's totals are kept until the library changes instead of being counted again every time.
+- Searching while the library downloads no longer waits on the download: the download writes each batch in one go, and the two take turns with the database.
+- Random order stays the same from one page to the next (choosing Random again deals a new order), and switching pages or tabs drops the searches still waiting for the old one.
+- Flash Museum: Play in Ruffle stopped on "HTTP 404" for files on flashmuseum.s3.amazonaws.com. Those files only download for requests that come from Flash Museum's player page, so the service now says where it found the file (the Referer header), as a browser does. If a file still won't download, the Logs page shows how the player page names it.
+- An older background service left running is replaced by the one in the app when it starts, so updates take effect without restarting the console.
 
 **New in 0.0.6**
 - Flash Museum (flashmuseum.net) on the Web page: Games, Animations, Hall of Fame and eleven genres, with search. Play in Ruffle follows the game's player page to its Flash file.

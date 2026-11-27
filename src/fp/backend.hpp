@@ -13,6 +13,7 @@
 #include "fp/json.hpp"
 #include "fp/worker.hpp"
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -50,6 +51,11 @@ struct SearchQuery
     bool show_extreme = false;
     int offset = 0;
     int limit = 21;
+    std::uint64_t seed = 0; // sort "random": the same seed gives the same order on every page
+    // Dropped before it reaches the service when *live has moved on from
+    // token (the list it was for was reloaded while it waited its turn).
+    std::shared_ptr<const std::atomic<std::uint64_t>> live;
+    std::uint64_t token = 0;
 
     bool operator==(const SearchQuery &) const = default;
 };

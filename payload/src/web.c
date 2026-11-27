@@ -160,14 +160,34 @@ static void url_encode_q(sb_t *sb, const char *s, int plus_spaces) {
   }
 }
 
-/* Downloads a page (cached for ten minutes); caller frees. */
 /* net_download, but in tests every https address goes to the stand-in. */
-static int web_download(const char *url, const char *dest, net_progress_cb cb, void *ud, char *err,
-                        size_t errlen) {
+static int web_download(const char *url, const char *referer, const char *dest, net_progress_cb cb, void *ud,
+                        char *err, size_t errlen) {
   char u[2048];
   str_lcpy(u, url, sizeof u);
   test_rewrite(u, sizeof u);
-  return net_download(u, dest, cb, ud, err, errlen);
+  return net_download_ref(u, dest, referer, cb, ud, err, errlen);
+}
+
+/* The Referer a browser sends for url when page asked for it (its default
+ * policy, strict-origin-when-cross-origin): the whole page address on the
+ * same site, only the site's origin on another one. Flash Museum keeps its
+ * files on Amazon S3, which only answers requests from its player pages. */
+static void referer_for(const char *page, const char *url, char *out, size_t size) {
+  out[0] = 0;
+  if (!page || strncasecmp(page, "http", 4)) return;
+  const char *ps = strstr(page, "://"), *us = strstr(url, "://");
+  if (!ps || !us) return;
+  size_t po = (size_t)(ps + 3 - page) + strcspn(ps + 3, "/?#"); /* scheme://host[:port] */
+  size_t uo = (size_t)(us + 3 - url) + strcspn(us + 3, "/?#");
+  if (po == uo && !strncasecmp(page, url, po)) {
+    size_t n = strcspn(page, "#");
+    snprintf(out, size, "%.*s", (int)n, page);
+  } else if (!strncasecmp(page, "https:", 6) && !strncasecmp(url, "http:", 5)) {
+    return; /* none from https to plain http */
+  } else {
+    snprintf(out, size, "%.*s/", (int)po, page);
+  }
 }
 
 /* Download to a name of our own, then move it into place, so two
@@ -177,7 +197,7 @@ static int download_atomic(const char *url, const char *path, char *err, size_t 
   char tmp[FP_PATH_MAX];
   snprintf(tmp, sizeof tmp, "%s.%u.tmp", path, __sync_fetch_and_add(&counter, 1));
   mkdirs_for_file(path);
-  if (web_download(url, tmp, NULL, NULL, err, errlen)) {
+  if (web_download(url, NULL, tmp, NULL, NULL, err, errlen)) {
     unlink(tmp);
     return -1;
   }
@@ -937,15 +957,17 @@ static void job_stage(const char *stage) {
   pthread_mutex_unlock(&g_job.lock);
 }
 
-/* Downloads url into dest; if it is a page, follows what it embeds. */
-static int resolve_swf(const char *url, const char *dest, int depth, int *budget, char *err,
+/* Downloads url (found on page `from`, NULL for the first) into dest; if
+ * it is a page, follows what it embeds. */
+static int resolve_swf(const char *url, const char *from, const char *dest, int depth, int *budget, char *err,
                        size_t errlen) {
   if (*budget <= 0) return -1;
   (*budget)--;
-  char tmp[FP_PATH_MAX];
+  char tmp[FP_PATH_MAX], referer[1024];
   snprintf(tmp, sizeof tmp, "%s.try%d", dest, *budget);
   unlink(tmp);
-  if (web_download(url, tmp, job_progress, NULL, err, errlen)) return -1;
+  referer_for(from, url, referer, sizeof referer);
+  if (web_download(url, referer[0] ? referer : NULL, tmp, job_progress, NULL, err, errlen)) return -1;
   if (is_swf_file(tmp)) {
     unlink(dest);
     if (rename(tmp, dest)) {
@@ -972,16 +994,28 @@ static int resolve_swf(const char *url, const char *dest, int depth, int *budget
     if (hint) LOG("web: %s names no .swf; near the player: %.240s", url, hint);
     else LOG("web: %s names no .swf (%zu bytes)", url, len);
   }
+  /* kept for the log in case none of the files downloads: how the page
+   * names them (an address built in a script, a token, another host...) */
+  char near[400] = "";
+  const char *swf = strcasestr(html, ".swf");
+  if (swf) {
+    const char *from_p = swf - html > 240 ? swf - 240 : html;
+    size_t k = 0;
+    for (const char *c = from_p; *c && c < swf + 120 && k + 1 < sizeof near; c++)
+      near[k++] = (*c == '\n' || *c == '\r' || *c == '\t') ? ' ' : *c;
+    near[k] = 0;
+  }
   free(html);
   for (int i = 0; i < n; i++) {
     if (!strcmp(cand[i], url)) continue;
     LOG("web: trying %s", cand[i]);
-    if (!resolve_swf(cand[i], dest, depth + 1, budget, err, errlen)) {
+    if (!resolve_swf(cand[i], url, dest, depth + 1, budget, err, errlen)) {
       free(cand);
       return 0;
     }
   }
   free(cand);
+  if (n && near[0]) LOG("web: no file from %s downloaded; the page near .swf: %s", url, near);
   if (!err[0] || n == 0) snprintf(err, errlen, "No Flash file found on that page");
   return -1;
 }
@@ -1021,7 +1055,7 @@ static void *job_main(void *arg) {
   if (!is_file(swf) || !is_swf_file(swf)) {
     job_stage(str_ends_with_ci(url, ".swf") ? "Downloading" : "Finding the Flash file");
     int budget = 8;
-    rc = resolve_swf(url, swf, 0, &budget, err, sizeof err);
+    rc = resolve_swf(url, NULL, swf, 0, &budget, err, sizeof err);
   }
   char msg[1024];
   const char *status = "launched";
