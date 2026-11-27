@@ -16,6 +16,11 @@ int net_init(void) { return 0; }
 
 int net_download(const char *url, const char *dest, net_progress_cb cb, void *ud, char *err,
                  size_t errlen) {
+  return net_download_ref(url, dest, NULL, cb, ud, err, errlen);
+}
+
+int net_download_ref(const char *url, const char *dest, const char *referer, net_progress_cb cb, void *ud,
+                     char *err, size_t errlen) {
   char part[FP_PATH_MAX];
   snprintf(part, sizeof part, "%s.part", dest);
   mkdirs_for_file(dest);
@@ -27,8 +32,12 @@ int net_download(const char *url, const char *dest, net_progress_cb cb, void *ud
     return -1;
   }
   if (pid == 0) {
-    execlp("curl", "curl", "-fsSL", "--retry", "2", "--connect-timeout", "20", "-A",
-           FPPS5_USER_AGENT, "-o", part, url, (char *)NULL);
+    if (referer && *referer)
+      execlp("curl", "curl", "-fsSL", "--retry", "2", "--connect-timeout", "20", "-A", FPPS5_USER_AGENT, "-e",
+             referer, "-o", part, url, (char *)NULL);
+    else
+      execlp("curl", "curl", "-fsSL", "--retry", "2", "--connect-timeout", "20", "-A",
+             FPPS5_USER_AGENT, "-o", part, url, (char *)NULL);
     _exit(127);
   }
   int status = 0;

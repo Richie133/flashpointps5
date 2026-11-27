@@ -552,9 +552,18 @@ void App::set_sidebar_focus(int row)
         web_.filter = row;
 }
 
+void App::bump(Browse &b)
+{
+    ++b.token;
+    b.live->store(b.token, std::memory_order_relaxed);
+}
+
 SearchQuery App::query_for(const Browse &b) const
 {
     SearchQuery q;
+    q.live = b.live;
+    q.token = b.token;
+    q.seed = random_seed_;
     q.library = b.library;
     q.text = search_;
     q.sort = settings_.sort;
@@ -580,7 +589,7 @@ void App::reload_browse(Browse &b)
     b.loading.clear();
     b.total = -1;
     b.failed = false;
-    ++b.token;
+    bump(b);
     b.focus = 0;
     b.scroll = b.scroll_to = 0.0f;
     images_.cancel_pending();
@@ -592,7 +601,7 @@ void App::refresh_browse(Browse &b)
     b.pages.clear();
     b.loading.clear();
     b.failed = false;
-    ++b.token;
+    bump(b);
     if (&b == browse())
         ensure_pages(b);
 }
@@ -604,7 +613,7 @@ void App::reload_all()
         b.pages.clear();
         b.loading.clear();
         b.total = -1;
-        ++b.token;
+        bump(b);
     }
     if (Browse *b = browse())
         reload_browse(*b);
@@ -1092,7 +1101,7 @@ void App::poll_sync(float dt)
                         b.total = -1; // loads from the top when opened
                         b.pages.clear();
                         b.loading.clear();
-                        ++b.token;
+                        bump(b);
                     }
                 }
                 else if (finished)
@@ -1815,7 +1824,11 @@ void App::start_swf_link(const std::string &url)
 void App::set_sort(int option)
 {
     if (option < kSortCount)
+    {
         settings_.sort = kSorts[option].id;
+        if (settings_.sort == "random") // choosing Random (again) deals a new order
+            random_seed_ = static_cast<std::uint64_t>(std::time(nullptr)) * 2654435761u + random_seed_;
+    }
     else
         settings_.desc = option == kSortCount + 1;
     save_settings();
@@ -3224,7 +3237,7 @@ void App::draw_about(gfx::DrawList &list) const
     list.rounded_rect({0, kMenuH, kW, kH - kMenuH - kStatusH}, 0, kBg);
     draw_mark(list, 190, 136, 120, kMark);
     ui::text(list, fonts_.bold, "Flashpoint PS5", 340, 200, 48, kText);
-    ui::text(list, fonts_.regular, "App 0.0.6 alpha, service " + backend_.info().version, 342, 240, 22, kMuted);
+    ui::text(list, fonts_.regular, "App 0.0.7 alpha, service " + backend_.info().version, 342, 240, 22, kMuted);
     const char *const paragraphs[] = {
         "An unofficial PS5 front end for the Flashpoint Archive, the community project that preserves web games and "
         "animations. It is not made or endorsed by Flashpoint Archive.",

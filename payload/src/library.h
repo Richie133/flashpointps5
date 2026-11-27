@@ -6,6 +6,10 @@
 
 #include "httpd.h"
 
+struct sqlite3;
+
+/* Opens the library; missing search indexes are then added in the
+ * background (once). */
 int lib_open(const char *db_path);
 int lib_is_open(void);
 long long lib_game_count(void);
@@ -48,6 +52,16 @@ int lib_launch_info(const char *game_id, const char *add_app_id, launch_info_t *
 /* Bookkeeping the launcher does too. */
 void lib_mark_data_present(long long game_data_id, const char *game_id, const char *path);
 void lib_record_play(const char *game_id);
+
+/* The search indexes (fpps5_*): adds those db lacks, returns a bit per index
+ * present. sync.c calls it on a new, empty library. */
+int lib_create_indexes(struct sqlite3 *db);
+
+/* Writers to the library besides the service's own connection (the index
+ * builder, the library download) take turns with these, so neither runs
+ * into the other's lock. */
+void lib_write_lock(void);
+void lib_write_unlock(void);
 
 /* Builds the GameZIP file name the launcher uses: <gameId>-<epoch ms>.zip */
 int lib_game_data_filename(const char *game_id, const char *date_added, char *out, size_t size);

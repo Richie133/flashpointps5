@@ -7,6 +7,8 @@
 #include "fp/http.hpp"
 #include "platform/ps5/system.hpp"
 
+#include "../../payload/src/version.h" // the service this app carries
+
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -181,6 +183,26 @@ void Backend::connect_job()
 {
     JsonValue cfg;
     bool up = fetch_json("GET", "/api/config", &cfg, nullptr, 1500);
+    if (up && str(cfg, "version") != FPPS5_VERSION)
+    {
+        // A service from another version of the app is still running (it
+        // stays up until the console restarts): swap in the one we carry, or
+        // its fixes never arrive.
+        sys::log("[FP] service %s is running, the app carries %s: replacing it", str(cfg, "version").c_str(),
+                 FPPS5_VERSION);
+        set_link(Link::starting);
+        JsonValue ignored;
+        fetch_json("GET", "/api/quit", &ignored, nullptr, 2000);
+        for (int i = 0; i < 20 && up; ++i)
+        {
+            sys::sleep_us(250000);
+            up = fetch_json("GET", "/api/config", &cfg, nullptr, 500);
+        }
+        if (up) // it wouldn't stop: better the old one than none
+            sys::log("[FP] the old service didn't stop; using it");
+        else
+            sys::sleep_us(500000); // its ports close as it exits
+    }
     if (!up)
     {
         std::string elf;
@@ -249,12 +271,21 @@ void Backend::search(const SearchQuery &query, std::function<void(SearchResult)>
         target += "&played=true&sort=lastPlayed&dir=desc";
     else
         target += "&sort=" + url_encode(query.sort) + (query.desc ? "&dir=desc" : "&dir=asc");
+    if (query.sort == "random")
+        target += "&seed=" + std::to_string(query.seed);
     if (query.installed)
         target += "&installed=true";
     target += std::string(query.show_extreme ? "&filter=false" : "&filter=true") +
               "&envelope=1&limit=" + std::to_string(query.limit) + "&offset=" + std::to_string(query.offset);
-    worker_.queue([this, target, done = std::move(done)] {
+    worker_.queue([this, target, live = query.live, token = query.token, done = std::move(done)] {
         SearchResult result;
+        if (live && live->load(std::memory_order_relaxed) != token)
+        {
+            // nobody wants this page any more: don't keep the service (and
+            // the searches queued behind it) busy with it
+            post([done, result] { done(result); });
+            return;
+        }
         JsonValue root;
         if (fetch_json("GET", target, &root, nullptr, 15000) && root["results"].is_array())
         {

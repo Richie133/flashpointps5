@@ -60,11 +60,9 @@ static const char k_schema[] =
   " id TEXT PRIMARY KEY, applicationPath TEXT, autoRunBefore INTEGER, launchCommand TEXT,"
   " name TEXT, waitForExit INTEGER, parentGameId TEXT);"
   "CREATE TABLE IF NOT EXISTS fpps5_sync (key TEXT PRIMARY KEY, value TEXT);"
-  "CREATE INDEX IF NOT EXISTS game_title ON game(title COLLATE NOCASE);"
-  "CREATE INDEX IF NOT EXISTS game_library ON game(library);"
-  "CREATE INDEX IF NOT EXISTS game_added ON game(dateAdded);"
   "CREATE INDEX IF NOT EXISTS game_data_game ON game_data(gameId);"
   "CREATE INDEX IF NOT EXISTS add_app_parent ON additional_app(parentGameId);";
+/* (the search indexes come from lib_create_indexes) */
 
 /* ---------------------------------------------------------------- status */
 
@@ -443,6 +441,7 @@ done:
 static void apply_deleted(sqlite3 *db) {
   cJSON *root = fetch_json(g_base, "/api/games/deleted");
   if (!root) return;
+  lib_write_lock();
   sqlite3_stmt *st[4] = {NULL};
   const char *sql[4] = {"DELETE FROM game WHERE id = ?", "DELETE FROM game_data WHERE gameId = ?",
                         "DELETE FROM additional_app WHERE parentGameId = ?", NULL};
@@ -462,6 +461,7 @@ static void apply_deleted(sqlite3 *db) {
   }
   for (int i = 0; i < 4; i++) sqlite3_finalize(st[i]);
   exec(db, "COMMIT");
+  lib_write_unlock();
   cJSON_Delete(root);
   LOG("sync: removed %d deleted entries", count);
 }
@@ -494,10 +494,14 @@ static void *sync_main(void *arg) {
   char after[64] = "1970-01-01", last_id[128] = "", latest[64] = "";
   int fresh = 1;
 
+  int locked = 0; /* lib_write_lock: the index builder may be busy with the same file */
+
   mkdirs(g_cfg.cache_path);
   mkdirs_for_file(g_cfg.db_path);
   set_progress(0, 0);
   set_status(SYNC_RUNNING, "Connecting to Flashpoint");
+  lib_write_lock();
+  locked = 1;
   if (sqlite3_open_v2(g_cfg.db_path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL) != SQLITE_OK) {
     set_status(SYNC_ERROR, "Can't create %s", g_cfg.db_path);
     goto out;
@@ -505,6 +509,11 @@ static void *sync_main(void *arg) {
   sqlite3_busy_timeout(db, 10000);
   exec(db, "PRAGMA journal_mode=DELETE");
   exec(db, "PRAGMA synchronous=NORMAL");
+  /* A page of entries fits in the cache, so it is written in one go at
+   * COMMIT: searches can keep reading until then instead of waiting while
+   * a spilled transaction holds the file. */
+  exec(db, "PRAGMA cache_size=-65536");
+  exec(db, "PRAGMA temp_store=MEMORY");
   char kind[32];
   sqlite3_stmt *probe;
   int has_game = 0;
@@ -535,8 +544,12 @@ static void *sync_main(void *arg) {
   } else if (exec(db, k_schema) != SQLITE_OK) {
     set_status(SYNC_ERROR, "Can't create the library database");
     goto out;
+  } else {
+    lib_create_indexes(db); /* on the empty table: instant, then kept up as entries arrive */
   }
   put_state(db, "kind", "fpfss");
+  lib_write_unlock();
+  locked = 0;
   if (!after[0]) str_lcpy(after, "1970-01-01", sizeof after);
   str_lcpy(latest, after, sizeof latest);
 
@@ -569,7 +582,9 @@ static void *sync_main(void *arg) {
       set_status(SYNC_ERROR, "The download stopped. It continues where it left off next time.");
       goto out;
     }
+    lib_write_lock();
     int n = apply_page(db, page, &tags, &plats, last_id, sizeof last_id, latest, sizeof latest);
+    lib_write_unlock();
     cJSON_Delete(page);
     if (n < 0) {
       set_status(SYNC_ERROR, "Writing the library failed (is the disk full?)");
@@ -581,6 +596,7 @@ static void *sync_main(void *arg) {
     if (!lib_is_open()) lib_open(g_cfg.db_path); /* browse while the rest comes in */
   }
   if (!fresh) apply_deleted(db);
+  lib_write_lock();
   put_state(db, "complete", "1");
   put_state(db, "latest", latest);
   put_state(db, "lastId", "");
@@ -592,11 +608,13 @@ static void *sync_main(void *arg) {
     str_lcpy(g_last_sync, stamp, sizeof g_last_sync);
     pthread_mutex_unlock(&g_lock);
   }
+  lib_write_unlock();
   if (!lib_is_open()) lib_open(g_cfg.db_path);
   lib_refresh_count();
   set_status(SYNC_DONE, done ? "Library up to date (%lld entries added or changed)" : "Library up to date", done);
 
 out:
+  if (locked) lib_write_unlock();
   names_free(&tags);
   names_free(&plats);
   if (db) sqlite3_close(db);

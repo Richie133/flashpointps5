@@ -1,6 +1,6 @@
 /* Flashpoint PS5 - tests for the web source parsers and the SWF finder,
  * on sample pages shaped like each site's.
- *   cc -D_GNU_SOURCE -Isrc tests/web_test.c src/util.c src/config.c third_party/cjson/cJSON.c \
+ *   cc -D_GNU_SOURCE -Isrc tests/web_test.c src/util.c third_party/cjson/cJSON.c \
  *      third_party/sha256/sha256.c -lpthread -o build/web_test && build/web_test
  * SPDX-License-Identifier: GPL-3.0-or-later */
 #include "../src/web.c"
@@ -10,10 +10,12 @@
 
 /* stand-ins for the network and Ruffle */
 static int offline;
-int net_download(const char *url, const char *dest, net_progress_cb cb, void *ud, char *err,
-                 size_t errlen) {
+static char last_referer[1024];
+int net_download_ref(const char *url, const char *dest, const char *referer, net_progress_cb cb, void *ud,
+                     char *err, size_t errlen) {
   (void)cb; (void)ud;
   const char *body = NULL;
+  str_lcpy(last_referer, referer ? referer : "", sizeof last_referer);
   if (!strcmp(url, "https://piczogame.net/play/3-foot-ninja.html"))
     body = "<html><script>RufflePlayer.newest().createPlayer().load({url:\"/media/games/3footninja.swf\"});"
            "</script><embed src=\"/media/player.swf\"></html>";
@@ -48,6 +50,15 @@ int net_download(const char *url, const char *dest, net_progress_cb cb, void *ud
     body = "<script src=\"https://unpkg.com/@ruffle-rs/ruffle\"></script><script>window.RufflePlayer.newest()"
            ".createPlayer().load({\"url\":\"https:\\/\\/files.flashmuseum.net\\/s\\/stick-war.swf\"});</script>";
   else if (!strcmp(url, "https://files.flashmuseum.net/s/stick-war.swf")) body = "CWS\x09....";
+  /* files on Amazon S3: 404 unless asked for from a Flash Museum player page */
+  else if (!strcmp(url, "https://flashmuseum.net/animation/crabs-fj7/"))
+    body = "<iframe class=\"fm-player-frame\" src=\"https://player.flashmuseum.net/animation/crabs-fj7/\"></iframe>";
+  else if (!strcmp(url, "https://player.flashmuseum.net/animation/crabs-fj7/"))
+    body = "<script>window.RufflePlayer.newest().createPlayer().load({url:"
+           "\"https://flashmuseum.s3.amazonaws.com/f79b2ae8-1125-43fc-738c-d72e98055de0.swf\"});</script>";
+  else if (!strcmp(url, "https://flashmuseum.s3.amazonaws.com/f79b2ae8-1125-43fc-738c-d72e98055de0.swf") &&
+           referer && !strcmp(referer, "https://player.flashmuseum.net/"))
+    body = "FWS\x0a....";
   if (offline && strstr(url, "/content/")) body = NULL;
   if (!body) { snprintf(err, errlen, "404 %s", url); return -1; }
   mkdirs_for_file(dest);
@@ -120,15 +131,15 @@ int main(void) {
   char err[256] = "", dest[1100];
   int budget = 6;
   snprintf(dest, sizeof dest, "%s/a.swf", g_cfg.cache_path);
-  assert(!resolve_swf("https://piczogame.net/play/3-foot-ninja.html", dest, 0, &budget, err, sizeof err));
+  assert(!resolve_swf("https://piczogame.net/play/3-foot-ninja.html", NULL, dest, 0, &budget, err, sizeof err));
   assert(is_swf_file(dest));
   budget = 6;
   snprintf(dest, sizeof dest, "%s/b.swf", g_cfg.cache_path);
-  assert(!resolve_swf("https://swfchan.com/54/269093/?18.swf", dest, 0, &budget, err, sizeof err));
+  assert(!resolve_swf("https://swfchan.com/54/269093/?18.swf", NULL, dest, 0, &budget, err, sizeof err));
   assert(is_swf_file(dest));
   budget = 6;
   err[0] = 0;
-  assert(resolve_swf("https://piczogame.net/play/missing.html", dest, 0, &budget, err, sizeof err));
+  assert(resolve_swf("https://piczogame.net/play/missing.html", NULL, dest, 0, &budget, err, sizeof err));
   /* Flash Museum: titles from link text or the logo's alt, logos from the
    * page or built from the slug, one entry per game */
   char *fm = web_list_json("flashmuseum", "games", "", 1, 0);
@@ -146,7 +157,25 @@ int main(void) {
     char d2[1200], e2[256] = "";
     snprintf(d2, sizeof d2, "%s/fm.swf", g_cfg.cache_path);
     int b2 = 8;
-    assert(!resolve_swf("https://flashmuseum.net/game/stick-war-4xx/", d2, 0, &b2, e2, sizeof e2));
+    assert(!resolve_swf("https://flashmuseum.net/game/stick-war-4xx/", NULL, d2, 0, &b2, e2, sizeof e2));
+    /* the S3 file gets the player page's origin as its Referer, as from a browser */
+    snprintf(d2, sizeof d2, "%s/fm2.swf", g_cfg.cache_path);
+    b2 = 8;
+    e2[0] = 0;
+    assert(!resolve_swf("https://flashmuseum.net/animation/crabs-fj7/", NULL, d2, 0, &b2, e2, sizeof e2));
+    assert(is_swf_file(d2) && !strcmp(last_referer, "https://player.flashmuseum.net/"));
+  }
+  /* Referer as a browser sends it */
+  {
+    char r[1024];
+    referer_for("https://a.net/x/y.html?q=1#top", "https://a.net/z.swf", r, sizeof r);
+    assert(!strcmp(r, "https://a.net/x/y.html?q=1"));
+    referer_for("https://a.net/x/y.html", "https://cdn.b.com/z.swf", r, sizeof r);
+    assert(!strcmp(r, "https://a.net/"));
+    referer_for("https://a.net/x/", "http://a.net/z.swf", r, sizeof r);
+    assert(!r[0]);
+    referer_for(NULL, "https://a.net/z.swf", r, sizeof r);
+    assert(!r[0]);
   }
 
   /* PiczoGame has no search page: its list pages are read and matched */

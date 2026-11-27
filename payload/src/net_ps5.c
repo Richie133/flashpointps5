@@ -34,9 +34,11 @@ int sceHttpSendRequest(int, const void *, size_t);
 int sceHttpGetStatusCode(int, int *);
 int sceHttpGetResponseContentLength(int, int *, uint64_t *);
 int sceHttpReadData(int, void *, size_t);
+int sceHttpAddRequestHeader(int, const char *, const char *, uint32_t);
 
 #define HTTP_VERSION_1_1 2
 #define HTTP_METHOD_GET 0
+#define HTTP_HEADER_OVERWRITE 0
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static int g_http = -1;
@@ -63,6 +65,11 @@ int net_init(void) {
 
 int net_download(const char *url, const char *dest, net_progress_cb cb, void *ud, char *err,
                  size_t errlen) {
+  return net_download_ref(url, dest, NULL, cb, ud, err, errlen);
+}
+
+int net_download_ref(const char *url, const char *dest, const char *referer, net_progress_cb cb, void *ud,
+                     char *err, size_t errlen) {
   if (net_init()) {
     snprintf(err, errlen, "network is not available");
     return -1;
@@ -90,6 +97,10 @@ int net_download(const char *url, const char *dest, net_progress_cb cb, void *ud
   if ((req = sceHttpCreateRequestWithURL(conn, HTTP_METHOD_GET, url, 0)) < 0) {
     snprintf(err, errlen, "sceHttpCreateRequestWithURL: %x", req);
     goto out;
+  }
+  if (referer && *referer) {
+    int h = sceHttpAddRequestHeader(req, "Referer", referer, HTTP_HEADER_OVERWRITE);
+    if (h < 0) LOG("net: couldn't set the Referer (%x)", h);
   }
   int e;
   if ((e = sceHttpSendRequest(req, NULL, 0)) < 0) {

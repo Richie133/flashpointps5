@@ -14,8 +14,11 @@
 #include "gfx/draw_list.hpp"
 #include "ui/fonts.hpp"
 
+#include <atomic>
 #include <cstdint>
 #include <array>
+#include <ctime>
+#include <memory>
 #include <map>
 #include <set>
 #include <string>
@@ -88,6 +91,8 @@ class App
         std::map<int, std::vector<Game>> pages;
         std::set<int> loading;
         std::uint64_t token = 0;
+        // token, for the request thread: searches queued for an older one are dropped
+        std::shared_ptr<std::atomic<std::uint64_t>> live = std::make_shared<std::atomic<std::uint64_t>>(0);
         int focus = 0;
         float scroll = 0.0f, scroll_to = 0.0f;
         bool failed = false;
@@ -162,6 +167,8 @@ class App
     Browse *browse();
     const Browse *browse() const;
     SearchQuery query_for(const Browse &b) const;
+    static void bump(Browse &b); // a new token: what's loading or queued for b is out of date
+    std::uint64_t random_seed_ = static_cast<std::uint64_t>(std::time(nullptr)); // the Random sort's order
     void reload_browse(Browse &b);
     void refresh_browse(Browse &b); // new data, same focus and scroll
     void reload_all();

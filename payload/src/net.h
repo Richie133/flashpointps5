@@ -13,3 +13,8 @@ int net_init(void);
  * Returns 0 on success; on failure -1 and a message in err. */
 int net_download(const char *url, const char *dest, net_progress_cb cb, void *ud, char *err,
                  size_t errlen);
+
+/* The same, sending a Referer header (NULL for none): some file hosts only
+ * answer requests that come from their own player page. */
+int net_download_ref(const char *url, const char *dest, const char *referer, net_progress_cb cb, void *ud,
+                     char *err, size_t errlen);
